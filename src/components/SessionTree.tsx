@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useMemo, useCallback, useEffect, useState } from "react";
+import React, { useMemo, useCallback, useEffect } from "react";
 import {
   ReactFlow,
   Node,
   Edge,
-  MiniMap,
   useReactFlow,
   ReactFlowProvider,
   NodeProps,
@@ -13,240 +12,275 @@ import {
   Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { SessionInfo } from "@/lib/types";
+import { NormalizedMessage, ContentBlock } from "@/lib/types";
+import { extractText, cleanPreview } from "@/lib/client-utils";
 
 // ── Types ──
 
-interface SessionNodeData {
+interface TurnInfo {
+  turnIndex: number;
+  messageIndex: number;
+  preview: string;
+  subagents: SubagentInfo[];
+}
+
+interface SubagentInfo {
   label: string;
-  provider: string;
-  messageCount: number;
-  timestamp: number;
-  isCurrent: boolean;
-  isSubagent: boolean;
-  sessionId: string;
+  agentKey: string;
+}
+
+interface RootNodeData {
+  label: string;
   [key: string]: unknown;
 }
 
-type SessionNode = Node<SessionNodeData>;
+interface TurnNodeData {
+  turnIndex: number;
+  messageIndex: number;
+  preview: string;
+  hasSubagents: boolean;
+  [key: string]: unknown;
+}
+
+interface SubagentNodeData {
+  label: string;
+  agentKey: string;
+  [key: string]: unknown;
+}
 
 interface SessionTreeProps {
-  sessions: SessionInfo[];
-  currentSessionId: string | null;
-  onSelectSession: (id: string) => void;
+  messages: NormalizedMessage[];
+  sessionId: string;
+  sessionLabel: string;
+  onScrollToMessage: (messageIndex: number) => void;
+  onNavigateSession: (sessionKey: string) => void;
   onClose: () => void;
 }
 
-// ── Custom Node ──
+// ── Extract turn structure from messages ──
 
-function SessionNodeComponent({ data }: NodeProps<SessionNode>) {
-  const { label, provider, messageCount, timestamp, isCurrent, isSubagent } =
-    data;
+function buildTurns(messages: NormalizedMessage[]): TurnInfo[] {
+  const turns: TurnInfo[] = [];
+  let turnIndex = 0;
 
-  const timeStr = useMemo(() => {
-    if (!timestamp) return "";
-    const d = new Date(timestamp);
-    const now = Date.now();
-    const diff = now - d.getTime();
-    if (diff < 60000) return "just now";
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  }, [timestamp]);
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.message?.role !== "user") continue;
+    // Skip tool_result messages (role=user but are tool responses)
+    if (msg.type === "tool_result" || msg.message.toolCallId) continue;
 
+    turnIndex++;
+    const userText = extractText(msg.message.content);
+    const preview = cleanPreview(userText).slice(0, 40) || `Turn ${turnIndex}`;
+
+    const subagents: SubagentInfo[] = [];
+
+    // Scan forward for assistant responses until next user turn
+    for (let j = i + 1; j < messages.length; j++) {
+      const next = messages[j];
+      // Stop at next real user message
+      if (
+        next.message?.role === "user" &&
+        !next.message.toolCallId &&
+        next.type !== "tool_result"
+      )
+        break;
+
+      if (
+        next.message?.role === "assistant" &&
+        Array.isArray(next.message.content)
+      ) {
+        for (const block of next.message.content as ContentBlock[]) {
+          if (
+            block.type === "tool_use" &&
+            (block.name === "sessions_spawn" ||
+              block.name === "Task" ||
+              block.name === "task")
+          ) {
+            const input = block.input || {};
+            const desc =
+              (input.description as string) ||
+              (input.name as string) ||
+              (input.prompt as string) ||
+              "subagent";
+            const label = desc.slice(0, 30);
+            const agentKey =
+              (input.agentId as string) ||
+              (input.name as string) ||
+              (input.sessionId as string) ||
+              block.id ||
+              "";
+            subagents.push({ label, agentKey });
+          }
+        }
+      }
+    }
+
+    turns.push({ turnIndex, messageIndex: i, preview, subagents });
+  }
+
+  return turns;
+}
+
+// ── Custom Nodes ──
+
+function RootNodeComponent({ data }: NodeProps<Node<RootNodeData>>) {
   return (
     <>
-      <Handle type="target" position={Position.Left} className="tree-handle" />
-      <div
-        className={`tree-node-card ${isCurrent ? "current" : ""} ${isSubagent ? "subagent" : ""}`}
-      >
+      <div className="tree-node-card tree-node-root">
         <div className="tree-node-top">
-          <span className="tree-node-title">{label}</span>
-          {provider && <span className="tree-node-badge">{provider}</span>}
-        </div>
-        <div className="tree-node-bottom">
-          <span className="tree-node-msgs">{messageCount} msgs</span>
-          <span className="tree-node-time">{timeStr}</span>
+          <span className="tree-node-title">{data.label}</span>
         </div>
       </div>
       <Handle
         type="source"
-        position={Position.Right}
+        position={Position.Bottom}
         className="tree-handle"
       />
     </>
   );
 }
 
-const nodeTypes = { sessionNode: SessionNodeComponent };
-
-// ── Tree Layout ──
-
-interface TreeItem {
-  session: SessionInfo;
-  children: TreeItem[];
+function TurnNodeComponent({ data }: NodeProps<Node<TurnNodeData>>) {
+  return (
+    <>
+      <Handle type="target" position={Position.Top} className="tree-handle" />
+      <div className="tree-node-card tree-node-turn">
+        <div className="tree-node-top">
+          <span className="tree-turn-label">Turn {data.turnIndex}</span>
+        </div>
+        <div className="tree-node-preview">{data.preview}</div>
+      </div>
+      {data.hasSubagents && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="right"
+          className="tree-handle"
+        />
+      )}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom"
+        className="tree-handle"
+      />
+    </>
+  );
 }
 
-function buildTree(sessions: SessionInfo[]): TreeItem[] {
-  const childMap = new Map<string, SessionInfo[]>();
-  const childIds = new Set<string>();
-
-  for (const s of sessions) {
-    const isKovaSub = s.key?.startsWith("agent:main:subagent:");
-    const parentId = s.parentSessionId || (isKovaSub ? "__main__" : null);
-    if (parentId) {
-      if (!childMap.has(parentId)) childMap.set(parentId, []);
-      childMap.get(parentId)!.push(s);
-      childIds.add(s.sessionId);
-    }
-  }
-
-  // Re-map __main__ children to the actual main session
-  const mainSess = sessions.find((s) => s.key === "agent:main:main");
-  if (mainSess && childMap.has("__main__")) {
-    const existing = childMap.get(mainSess.sessionId) || [];
-    childMap.set(mainSess.sessionId, [
-      ...existing,
-      ...childMap.get("__main__")!,
-    ]);
-    childMap.delete("__main__");
-  }
-
-  function makeItem(s: SessionInfo): TreeItem {
-    const children = (childMap.get(s.sessionId) || [])
-      .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0))
-      .map(makeItem);
-    return { session: s, children };
-  }
-
-  const roots = sessions
-    .filter((s) => !childIds.has(s.sessionId))
-    .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
-
-  return roots.map(makeItem);
+function SubagentNodeComponent({ data }: NodeProps<Node<SubagentNodeData>>) {
+  return (
+    <>
+      <Handle type="target" position={Position.Left} className="tree-handle" />
+      <div className="tree-node-card tree-node-subagent">
+        <div className="tree-node-top">
+          <span className="tree-node-title">{data.label}</span>
+          <span className="tree-node-badge">subagent</span>
+        </div>
+        <div className="tree-node-arrow-row">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M3 8h10M10 4l3 4-3 4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+      </div>
+    </>
+  );
 }
 
-function layoutTree(
-  tree: TreeItem[],
-  currentSessionId: string | null
-): { nodes: SessionNode[]; edges: Edge[] } {
-  const nodes: SessionNode[] = [];
+const nodeTypes = {
+  rootNode: RootNodeComponent,
+  turnNode: TurnNodeComponent,
+  subagentNode: SubagentNodeComponent,
+};
+
+// ── Layout ──
+
+function layoutTurns(
+  turns: TurnInfo[],
+  label: string
+): { nodes: Node[]; edges: Edge[] } {
+  const nodes: Node[] = [];
   const edges: Edge[] = [];
-  let yOffset = 0;
 
-  // Find the path from root to current session for highlighting edges
-  const activePath = new Set<string>();
-  function findPath(items: TreeItem[], target: string): boolean {
-    for (const item of items) {
-      if (item.session.sessionId === target) {
-        activePath.add(item.session.sessionId);
-        return true;
-      }
-      if (findPath(item.children, target)) {
-        activePath.add(item.session.sessionId);
-        return true;
-      }
-    }
-    return false;
-  }
-  if (currentSessionId) findPath(tree, currentSessionId);
+  const TURN_X = 0;
+  const SUBAGENT_X = 280;
+  const ROW_HEIGHT = 76;
+  const SUB_ROW_HEIGHT = 52;
+  const ROOT_Y = 0;
 
-  function layoutItem(
-    item: TreeItem,
-    depth: number,
-    parentId?: string
-  ): { minY: number; maxY: number; centerY: number } {
-    const x = depth * 260;
-    const nodeId = item.session.sessionId;
+  // Root session node
+  nodes.push({
+    id: "root",
+    type: "rootNode",
+    position: { x: TURN_X, y: ROOT_Y },
+    data: { label },
+  });
 
-    if (item.children.length === 0) {
-      const y = yOffset;
-      yOffset += 80;
+  let y = 56; // start below root
 
-      const truncLabel =
-        (item.session.label || item.session.title || item.session.key || item.session.sessionId.slice(0, 14))
-          .slice(0, 25);
-
-      nodes.push({
-        id: nodeId,
-        type: "sessionNode",
-        position: { x, y },
-        data: {
-          label: truncLabel,
-          provider: item.session.source || "",
-          messageCount: item.session.messageCount || 0,
-          timestamp: item.session.lastUpdated || 0,
-          isCurrent: nodeId === currentSessionId,
-          isSubagent: item.session.isSubagent,
-          sessionId: nodeId,
-        },
-      });
-
-      if (parentId) {
-        const isActive = activePath.has(parentId) && activePath.has(nodeId);
-        edges.push({
-          id: `${parentId}-${nodeId}`,
-          source: parentId,
-          target: nodeId,
-          type: "default",
-          style: {
-            stroke: isActive ? "#9B72EF" : "var(--border)",
-            strokeWidth: isActive ? 2 : 1,
-          },
-        });
-      }
-
-      return { minY: y, maxY: y, centerY: y };
-    }
-
-    // Layout children first
-    const childResults = item.children.map((child) =>
-      layoutItem(child, depth + 1, nodeId)
-    );
-
-    const minY = childResults[0].minY;
-    const maxY = childResults[childResults.length - 1].maxY;
-    const centerY = (minY + maxY) / 2;
-
-    const truncLabel =
-      (item.session.label || item.session.title || item.session.key || item.session.sessionId.slice(0, 14))
-        .slice(0, 25);
+  for (let i = 0; i < turns.length; i++) {
+    const turn = turns[i];
+    const turnId = `turn-${turn.turnIndex}`;
 
     nodes.push({
-      id: nodeId,
-      type: "sessionNode",
-      position: { x, y: centerY },
+      id: turnId,
+      type: "turnNode",
+      position: { x: TURN_X, y },
       data: {
-        label: truncLabel,
-        provider: item.session.source || "",
-        messageCount: item.session.messageCount || 0,
-        timestamp: item.session.lastUpdated || 0,
-        isCurrent: nodeId === currentSessionId,
-        isSubagent: item.session.isSubagent,
-        sessionId: nodeId,
+        turnIndex: turn.turnIndex,
+        messageIndex: turn.messageIndex,
+        preview: turn.preview,
+        hasSubagents: turn.subagents.length > 0,
       },
     });
 
-    if (parentId) {
-      const isActive = activePath.has(parentId) && activePath.has(nodeId);
+    // Edge from previous
+    const prevId = i === 0 ? "root" : `turn-${turns[i - 1].turnIndex}`;
+    edges.push({
+      id: `${prevId}->${turnId}`,
+      source: prevId,
+      target: turnId,
+      sourceHandle: prevId === "root" ? undefined : "bottom",
+      type: "default",
+      style: { stroke: "var(--border)", strokeWidth: 1 },
+    });
+
+    // Subagent branches to the right
+    for (let j = 0; j < turn.subagents.length; j++) {
+      const sub = turn.subagents[j];
+      const subId = `${turnId}-sub-${j}`;
+      const subY = y + j * SUB_ROW_HEIGHT;
+
+      nodes.push({
+        id: subId,
+        type: "subagentNode",
+        position: { x: SUBAGENT_X, y: subY },
+        data: { label: sub.label, agentKey: sub.agentKey },
+      });
+
       edges.push({
-        id: `${parentId}-${nodeId}`,
-        source: parentId,
-        target: nodeId,
+        id: `${turnId}->${subId}`,
+        source: turnId,
+        target: subId,
+        sourceHandle: "right",
         type: "default",
-        style: {
-          stroke: isActive ? "#9B72EF" : "var(--border)",
-          strokeWidth: isActive ? 2 : 1,
-        },
+        style: { stroke: "#9B72EF", strokeWidth: 1.5, strokeDasharray: "4 2" },
       });
     }
 
-    return { minY, maxY, centerY };
-  }
-
-  for (const root of tree) {
-    layoutItem(root, 0);
-    yOffset += 20; // gap between root trees
+    // Advance Y, accounting for subagent stack height
+    const subHeight =
+      turn.subagents.length > 1
+        ? (turn.subagents.length - 1) * SUB_ROW_HEIGHT
+        : 0;
+    y += Math.max(ROW_HEIGHT, subHeight + ROW_HEIGHT);
   }
 
   return { nodes, edges };
@@ -255,116 +289,70 @@ function layoutTree(
 // ── Inner Flow (needs ReactFlowProvider) ──
 
 function InnerFlow({
-  sessions,
-  currentSessionId,
-  onSelectSession,
+  messages,
+  sessionLabel: label,
+  onScrollToMessage,
+  onNavigateSession,
 }: {
-  sessions: SessionInfo[];
-  currentSessionId: string | null;
-  onSelectSession: (id: string) => void;
+  messages: NormalizedMessage[];
+  sessionLabel: string;
+  onScrollToMessage: (messageIndex: number) => void;
+  onNavigateSession: (sessionKey: string) => void;
 }) {
   const { fitView } = useReactFlow();
-  const [hoveredPath, setHoveredPath] = useState<Set<string>>(new Set());
 
-  const tree = useMemo(() => buildTree(sessions), [sessions]);
-  const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
-    () => layoutTree(tree, currentSessionId),
-    [tree, currentSessionId]
+  const turns = useMemo(() => buildTurns(messages), [messages]);
+  const { nodes, edges } = useMemo(
+    () => layoutTurns(turns, label),
+    [turns, label]
   );
 
-  // Apply hover highlighting
-  const styledEdges = useMemo(() => {
-    if (hoveredPath.size === 0) return layoutEdges;
-    return layoutEdges.map((e) => {
-      const bothInPath = hoveredPath.has(e.source) && hoveredPath.has(e.target);
-      if (bothInPath) {
-        return {
-          ...e,
-          style: { ...e.style, stroke: "#9B72EF", strokeWidth: 2 },
-        };
-      }
-      return e;
-    });
-  }, [layoutEdges, hoveredPath]);
-
   useEffect(() => {
-    // fitView after layout changes
     const timer = setTimeout(() => fitView({ padding: 0.15 }), 50);
     return () => clearTimeout(timer);
-  }, [layoutNodes, fitView]);
+  }, [nodes, fitView]);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      const sid = (node.data as SessionNodeData).sessionId;
-      if (sid) onSelectSession(sid);
-    },
-    [onSelectSession]
-  );
-
-  // Build ancestor path for hover highlighting
-  const parentMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const e of layoutEdges) {
-      map.set(e.target, e.source);
-    }
-    return map;
-  }, [layoutEdges]);
-
-  const onNodeMouseEnter = useCallback(
-    (_: React.MouseEvent, node: Node) => {
-      const path = new Set<string>();
-      let current: string | undefined = node.id;
-      while (current) {
-        path.add(current);
-        current = parentMap.get(current);
+      if (node.type === "turnNode") {
+        const d = node.data as TurnNodeData;
+        onScrollToMessage(d.messageIndex);
+      } else if (node.type === "subagentNode") {
+        const d = node.data as SubagentNodeData;
+        if (d.agentKey) onNavigateSession(d.agentKey);
       }
-      setHoveredPath(path);
     },
-    [parentMap]
+    [onScrollToMessage, onNavigateSession]
   );
-
-  const onNodeMouseLeave = useCallback(() => {
-    setHoveredPath(new Set());
-  }, []);
 
   return (
     <ReactFlow
-      nodes={layoutNodes}
-      edges={styledEdges}
+      nodes={nodes}
+      edges={edges}
       nodeTypes={nodeTypes}
       onNodeClick={onNodeClick}
-      onNodeMouseEnter={onNodeMouseEnter}
-      onNodeMouseLeave={onNodeMouseLeave}
       fitView
-      minZoom={0.2}
+      minZoom={0.3}
       maxZoom={1.5}
       proOptions={{ hideAttribution: true }}
       className="session-tree-flow"
-    >
-      <MiniMap
-        nodeColor={(n) => {
-          const d = n.data as SessionNodeData;
-          return d.isCurrent ? "#9B72EF" : "var(--border)";
-        }}
-        maskColor="rgba(0,0,0,0.15)"
-        className="session-tree-minimap"
-      />
-    </ReactFlow>
+    />
   );
 }
 
 // ── Main Export ──
 
 export default function SessionTree({
-  sessions,
-  currentSessionId,
-  onSelectSession,
+  messages,
+  sessionLabel: label,
+  onScrollToMessage,
+  onNavigateSession,
   onClose,
 }: SessionTreeProps) {
   return (
     <div className="tree-panel">
       <div className="tree-panel-header">
-        <span className="tree-panel-title">Session Tree</span>
+        <span className="tree-panel-title">Conversation Map</span>
         <button className="tree-panel-close" onClick={onClose} title="Close">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
             <path
@@ -379,9 +367,10 @@ export default function SessionTree({
       <div className="tree-panel-body">
         <ReactFlowProvider>
           <InnerFlow
-            sessions={sessions}
-            currentSessionId={currentSessionId}
-            onSelectSession={onSelectSession}
+            messages={messages}
+            sessionLabel={label}
+            onScrollToMessage={onScrollToMessage}
+            onNavigateSession={onNavigateSession}
           />
         </ReactFlowProvider>
       </div>

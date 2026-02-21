@@ -208,6 +208,8 @@ export default function MainPanel() {
   const setLoading = useStore((s) => s.setLoading);
   const blockColors = useStore((s) => s.blockColors);
   const appSettings = useStore((s) => s.settings);
+  const scrollTargetIndex = useStore((s) => s.scrollTargetIndex);
+  const setScrollTargetIndex = useStore((s) => s.setScrollTargetIndex);
 
   const messagesRef = useRef<HTMLDivElement>(null);
   const [searchVisible, setSearchVisible] = useState(false);
@@ -343,6 +345,32 @@ export default function MainPanel() {
     return () => document.removeEventListener("keydown", handleKey);
   }, [setCurrentSession]);
 
+  // Scroll to message when scrollTargetIndex is set (from tree panel)
+  useEffect(() => {
+    if (scrollTargetIndex === null) return;
+    // Ensure the target message is in the visible range
+    const total = currentMessages.length;
+    const needed = total - scrollTargetIndex;
+    if (needed > displayCount) {
+      setDisplayCount(needed + 10);
+    }
+    // Defer scroll to allow render
+    requestAnimationFrame(() => {
+      const container = messagesRef.current;
+      if (!container) return;
+      const el = container.querySelector(
+        `[data-msg-index="${scrollTargetIndex}"]`
+      );
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Flash highlight
+        el.classList.add("msg-scroll-highlight");
+        setTimeout(() => el.classList.remove("msg-scroll-highlight"), 1500);
+      }
+    });
+    setScrollTargetIndex(null);
+  }, [scrollTargetIndex, currentMessages.length, displayCount, setScrollTargetIndex]);
+
   if (!currentSessionId) {
     return (
       <div className="empty-state" style={{ background: "var(--bg)" }}>
@@ -449,16 +477,17 @@ export default function MainPanel() {
             <div className="loading-state">No messages</div>
           ) : (
             visible.map((entry, i) => (
-              <MessageRenderer
-                key={startIdx + i}
-                entry={entry}
-                allThinkingExpanded={allThinkingExpanded}
-                blockExpansion={blockExpansion}
-                blockColors={blockColors}
-                settings={appSettings}
-                toolInputsMap={toolInputsMap}
-                onNavigateSession={handleNavigateToSession}
-              />
+              <div key={startIdx + i} data-msg-index={startIdx + i}>
+                <MessageRenderer
+                  entry={entry}
+                  allThinkingExpanded={allThinkingExpanded}
+                  blockExpansion={blockExpansion}
+                  blockColors={blockColors}
+                  settings={appSettings}
+                  toolInputsMap={toolInputsMap}
+                  onNavigateSession={handleNavigateToSession}
+                />
+              </div>
             ))
           )}
         </div>

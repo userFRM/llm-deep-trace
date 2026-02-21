@@ -1805,7 +1805,7 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
 /* ── Tree Node Card ──────────────── */
 
 .tree-node-card {
-  width: 200px;
+  width: 210px;
   padding: 8px 12px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1818,21 +1818,63 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   border-color: var(--accent-border);
 }
 
-.tree-node-card.current {
+/* Root session node */
+.tree-node-root {
   border-color: #9B72EF;
-  box-shadow: 0 0 0 1px rgba(155, 114, 239, 0.25);
+  box-shadow: 0 0 0 1px rgba(155, 114, 239, 0.2);
 }
 
-.tree-node-card.subagent {
-  width: 180px;
+.tree-node-root .tree-node-title {
+  font-weight: 600;
+  color: #9B72EF;
+}
+
+/* Turn node */
+.tree-node-turn {
+  width: 210px;
+}
+
+.tree-turn-label {
+  font-size: 10px;
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tree-node-preview {
+  font-size: 11px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+/* Subagent branch node */
+.tree-node-subagent {
+  width: 200px;
   padding: 6px 10px;
+  border-color: rgba(155, 114, 239, 0.3);
+  background: var(--surface);
+}
+
+.tree-node-subagent:hover {
+  border-color: #9B72EF;
+}
+
+.tree-node-arrow-row {
+  margin-top: 2px;
+  color: #9B72EF;
+  opacity: 0.7;
 }
 
 .tree-node-top {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 4px;
 }
 
 .tree-node-title {
@@ -1860,22 +1902,15 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   letter-spacing: 0.03em;
 }
 
-.tree-node-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* Scroll-to highlight animation */
+@keyframes scrollHighlight {
+  0% { background: rgba(155, 114, 239, 0.15); }
+  100% { background: transparent; }
 }
 
-.tree-node-msgs {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text-3);
-}
-
-.tree-node-time {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text-3);
+.msg-scroll-highlight {
+  animation: scrollHighlight 1.5s ease-out;
+  border-radius: var(--radius);
 }
 
 /* ── Light theme: tree panel ─────── */

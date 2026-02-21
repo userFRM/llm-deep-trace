@@ -27,6 +27,7 @@ interface AppState {
   settingsOpen: boolean;
   blockColors: BlockColors;
   settings: AppSettings;
+  scrollTargetIndex: number | null;
 
   setSessions: (sessions: SessionInfo[]) => void;
   setCurrentSession: (id: string | null) => void;
@@ -45,6 +46,7 @@ interface AppState {
   setBlockColor: (key: keyof BlockColors, color: string) => void;
   resetBlockColor: (key: keyof BlockColors) => void;
   setSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  setScrollTargetIndex: (idx: number | null) => void;
   initFromLocalStorage: () => void;
   applyFilter: () => void;
 }
@@ -170,6 +172,7 @@ export const useStore = create<AppState>((set, get) => ({
   settingsOpen: false,
   blockColors: { ...DEFAULT_BLOCK_COLORS },
   settings: { ...DEFAULT_SETTINGS },
+  scrollTargetIndex: null,
 
   setSessions: (sessions) => {
     sessions.sort((a, b) => {
@@ -263,6 +266,8 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+
+  setScrollTargetIndex: (idx) => set({ scrollTargetIndex: idx }),
 
   setBlockColor: (key, color) => {
     const colors = { ...get().blockColors, [key]: color };
