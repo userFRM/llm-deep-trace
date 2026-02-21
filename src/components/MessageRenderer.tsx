@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { NormalizedMessage, BlockColors } from "@/lib/types";
+import type { BlockExpansion, BlockCategory } from "@/lib/store";
 import {
   fmtTime,
   extractText,
@@ -106,14 +107,21 @@ function ToolCallBlock({
   block,
   blockColors,
   autoExpand,
+  globalExpand,
 }: {
   block: Record<string, unknown>;
   blockColors: BlockColors;
   autoExpand: boolean;
+  globalExpand?: boolean;
 }) {
   const name = (block.name as string) || "?";
   const input = (block.input || {}) as Record<string, unknown>;
-  const [expanded, setExpanded] = useState(autoExpand);
+  const [expanded, setExpanded] = useState(autoExpand || !!globalExpand);
+  const [localOverride, setLocalOverride] = useState(false);
+
+  useEffect(() => {
+    if (!localOverride) setExpanded(!!globalExpand || autoExpand);
+  }, [globalExpand, autoExpand, localOverride]);
 
   const colorKey = toolColorKey(name);
   const accent = colorKey ? blockColors[colorKey as keyof BlockColors] : "#888899";
@@ -180,7 +188,7 @@ function ToolCallBlock({
       className={`tool-call ${expanded ? "expanded" : ""}`}
       style={{ "--block-accent": accent } as React.CSSProperties}
     >
-      <div className="tool-call-header" onClick={() => setExpanded(!expanded)}>
+      <div className="tool-call-header" onClick={() => { setLocalOverride(true); setExpanded(!expanded); }}>
         <span className={`tc-chevron ${expanded ? "open" : ""}`}>
           <ChevronSvg />
         </span>
@@ -201,6 +209,7 @@ function ToolResultBlock({
   showTime,
   blockColors,
   autoExpand,
+  globalExpand,
   toolInputsMap,
   onNavigateSession,
 }: {
@@ -209,6 +218,7 @@ function ToolResultBlock({
   showTime: boolean;
   blockColors: BlockColors;
   autoExpand: boolean;
+  globalExpand?: boolean;
   toolInputsMap?: Map<string, Record<string, unknown>>;
   onNavigateSession?: (key: string) => void;
 }) {
@@ -217,8 +227,13 @@ function ToolResultBlock({
   const text = extractResultText(msg.content);
   const [showFull, setShowFull] = useState(false);
   const [mdrOpen, setMdrOpen] = useState(false);
-  const [expanded, setExpanded] = useState(autoExpand);
+  const [expanded, setExpanded] = useState(autoExpand || !!globalExpand);
+  const [localOverride, setLocalOverride] = useState(false);
   const toolInput = toolInputsMap?.get(msg.toolCallId || "") || {};
+
+  useEffect(() => {
+    if (!localOverride) setExpanded(!!globalExpand || autoExpand);
+  }, [globalExpand, autoExpand, localOverride]);
 
   const colorKey = toolColorKey(toolName);
   const accent = colorKey ? blockColors[colorKey as keyof BlockColors] : "#888899";
@@ -526,7 +541,7 @@ function ToolResultBlock({
       className={`tool-result-wrap ${expanded ? "expanded" : ""}`}
       style={{ "--block-accent": accent } as React.CSSProperties}
     >
-      <div className="tool-result-header" onClick={() => setExpanded(!expanded)}>
+      <div className="tool-result-header" onClick={() => { setLocalOverride(true); setExpanded(!expanded); }}>
         <span className={`tc-chevron ${expanded ? "open" : ""}`}>
           <ChevronSvg />
         </span>
@@ -568,6 +583,7 @@ function AssistantMessage({
   time,
   showTime,
   allThinkingExpanded,
+  blockExpansion,
   blockColors,
   autoExpand,
 }: {
@@ -575,6 +591,7 @@ function AssistantMessage({
   time: string;
   showTime: boolean;
   allThinkingExpanded: boolean;
+  blockExpansion?: BlockExpansion;
   blockColors: BlockColors;
   autoExpand: boolean;
 }) {
@@ -607,16 +624,19 @@ function AssistantMessage({
           />
         );
       } else if (block.type === "tool_use") {
+        const catKey = toolColorKey((block.name as string) || "") as BlockCategory;
         toolCallParts.push(
-          <ToolCallBlock key={`tc${i}`} block={block} blockColors={blockColors} autoExpand={autoExpand} />
+          <ToolCallBlock key={`tc${i}`} block={block} blockColors={blockColors} autoExpand={autoExpand} globalExpand={catKey && blockExpansion ? blockExpansion[catKey] : undefined} />
         );
       } else if (block.type === "toolCall") {
+        const catKey = toolColorKey((block.name as string) || "") as BlockCategory;
         toolCallParts.push(
           <ToolCallBlock
             key={`tc${i}`}
             block={{ id: block.id, name: block.name, input: block.arguments || block.input || {} }}
             blockColors={blockColors}
             autoExpand={autoExpand}
+            globalExpand={catKey && blockExpansion ? blockExpansion[catKey] : undefined}
           />
         );
       } else {
@@ -764,6 +784,7 @@ function ThinkingLevelChange({ entry }: { entry: NormalizedMessage }) {
 export default function MessageRenderer({
   entry,
   allThinkingExpanded,
+  blockExpansion,
   blockColors,
   settings,
   toolInputsMap,
@@ -771,6 +792,7 @@ export default function MessageRenderer({
 }: {
   entry: NormalizedMessage;
   allThinkingExpanded: boolean;
+  blockExpansion?: BlockExpansion;
   blockColors: BlockColors;
   settings: { showTimestamps: boolean; autoExpandToolCalls: boolean };
   toolInputsMap?: Map<string, Record<string, unknown>>;
@@ -805,11 +827,13 @@ export default function MessageRenderer({
         time={time}
         showTime={showTime}
         allThinkingExpanded={allThinkingExpanded}
+        blockExpansion={blockExpansion}
         blockColors={blockColors}
         autoExpand={settings.autoExpandToolCalls}
       />
     );
-  if (role === "toolResult")
+  if (role === "toolResult") {
+    const catKey = toolColorKey(msg.toolName || "") as BlockCategory;
     return (
       <ToolResultBlock
         msg={msg}
@@ -817,10 +841,12 @@ export default function MessageRenderer({
         showTime={showTime}
         blockColors={blockColors}
         autoExpand={settings.autoExpandToolCalls}
+        globalExpand={catKey && blockExpansion ? blockExpansion[catKey] : undefined}
         toolInputsMap={toolInputsMap}
         onNavigateSession={onNavigateSession}
       />
     );
+  }
 
   return null;
 }

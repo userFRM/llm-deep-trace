@@ -4,6 +4,10 @@ import { create } from "zustand";
 import { SessionInfo, RawEntry, NormalizedMessage, BlockColors, AppSettings, DEFAULT_BLOCK_COLORS, DEFAULT_SETTINGS } from "./types";
 import { normalizeEntries } from "./normalizers";
 
+export type BlockCategory = "thinking" | "exec" | "file" | "web" | "browser" | "msg" | "agent";
+
+export type BlockExpansion = Record<BlockCategory, boolean>;
+
 interface AppState {
   sessions: SessionInfo[];
   filteredSessions: SessionInfo[];
@@ -16,6 +20,8 @@ interface AppState {
   sourceFilters: { kova: boolean; claude: boolean; codex: boolean };
   expandedGroups: Set<string>;
   allThinkingExpanded: boolean;
+  blockExpansion: BlockExpansion;
+  treePanelOpen: boolean;
   theme: string;
   sidebarWidth: number;
   settingsOpen: boolean;
@@ -31,6 +37,8 @@ interface AppState {
   toggleSourceFilter: (source: string) => void;
   toggleGroupExpanded: (sessionId: string) => void;
   toggleAllThinking: () => void;
+  toggleBlockExpansion: (category: BlockCategory) => void;
+  setTreePanelOpen: (open: boolean) => void;
   setTheme: (theme: string) => void;
   setSidebarWidth: (w: number) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -155,6 +163,8 @@ export const useStore = create<AppState>((set, get) => ({
   sourceFilters: { kova: true, claude: true, codex: true },
   expandedGroups: new Set<string>(),
   allThinkingExpanded: false,
+  blockExpansion: { thinking: false, exec: false, file: false, web: false, browser: false, msg: false, agent: false },
+  treePanelOpen: false,
   theme: "system",
   sidebarWidth: 280,
   settingsOpen: false,
@@ -207,8 +217,24 @@ export const useStore = create<AppState>((set, get) => ({
     saveExpandedGroups(expanded);
   },
 
-  toggleAllThinking: () =>
-    set({ allThinkingExpanded: !get().allThinkingExpanded }),
+  toggleAllThinking: () => {
+    const newVal = !get().allThinkingExpanded;
+    const expansion = { ...get().blockExpansion, thinking: newVal };
+    set({ allThinkingExpanded: newVal, blockExpansion: expansion });
+  },
+
+  toggleBlockExpansion: (category) => {
+    const expansion = { ...get().blockExpansion };
+    expansion[category] = !expansion[category];
+    // Sync thinking toggle with allThinkingExpanded for backwards compat
+    if (category === "thinking") {
+      set({ blockExpansion: expansion, allThinkingExpanded: expansion.thinking });
+    } else {
+      set({ blockExpansion: expansion });
+    }
+  },
+
+  setTreePanelOpen: (open) => set({ treePanelOpen: open }),
 
   setTheme: (theme) => {
     set({ theme });

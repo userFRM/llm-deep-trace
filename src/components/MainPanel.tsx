@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { useStore } from "@/lib/store";
+import { useStore, BlockCategory } from "@/lib/store";
+import { BlockColors } from "@/lib/types";
 import { sessionLabel, relativeTime, channelIcon, copyToClipboard } from "@/lib/client-utils";
 import MessageRenderer from "./MessageRenderer";
 
@@ -147,6 +148,49 @@ function MsgSearchBar({
   );
 }
 
+const BLOCK_PILLS: { category: BlockCategory; label: string }[] = [
+  { category: "thinking", label: "thinking" },
+  { category: "exec", label: "exec" },
+  { category: "file", label: "edit / write" },
+  { category: "web", label: "web" },
+  { category: "browser", label: "browser" },
+  { category: "msg", label: "message" },
+  { category: "agent", label: "tasks" },
+];
+
+function BlockToggleToolbar({
+  blockExpansion,
+  blockColors,
+  onToggle,
+}: {
+  blockExpansion: Record<string, boolean>;
+  blockColors: BlockColors;
+  onToggle: (category: BlockCategory) => void;
+}) {
+  return (
+    <div className="block-toggle-strip">
+      {BLOCK_PILLS.map(({ category, label }) => {
+        const active = blockExpansion[category];
+        const color = blockColors[category] || "#888899";
+        return (
+          <button
+            key={category}
+            className={`block-pill ${active ? "active" : ""}`}
+            style={
+              active
+                ? { background: color, borderColor: color, color: "#fff" }
+                : { borderColor: color, color }
+            }
+            onClick={() => onToggle(category)}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function MainPanel() {
   const currentSessionId = useStore((s) => s.currentSessionId);
   const sessions = useStore((s) => s.sessions);
@@ -155,6 +199,10 @@ export default function MainPanel() {
   const sseConnected = useStore((s) => s.sseConnected);
   const allThinkingExpanded = useStore((s) => s.allThinkingExpanded);
   const toggleAllThinking = useStore((s) => s.toggleAllThinking);
+  const blockExpansion = useStore((s) => s.blockExpansion);
+  const toggleBlockExpansion = useStore((s) => s.toggleBlockExpansion);
+  const treePanelOpen = useStore((s) => s.treePanelOpen);
+  const setTreePanelOpen = useStore((s) => s.setTreePanelOpen);
   const setCurrentSession = useStore((s) => s.setCurrentSession);
   const setMessages = useStore((s) => s.setMessages);
   const setLoading = useStore((s) => s.setLoading);
@@ -355,14 +403,17 @@ export default function MainPanel() {
             />
             {sseConnected ? "live" : "offline"}
           </div>
+          <button
+            className={`toolbar-btn tree-panel-btn ${treePanelOpen ? "active" : ""}`}
+            onClick={() => setTreePanelOpen(!treePanelOpen)}
+            title="Session tree"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M2 3h4M6 3v10M6 8h4M10 5v6M10 5h4M10 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
         <div className="main-toolbar">
-          <button
-            className={`toolbar-btn ${allThinkingExpanded ? "active" : ""}`}
-            onClick={toggleAllThinking}
-          >
-            {allThinkingExpanded ? "collapse thinking" : "thinking"}
-          </button>
           <button
             className={`toolbar-btn ${searchVisible ? "active" : ""}`}
             onClick={() => setSearchVisible(!searchVisible)}
@@ -371,6 +422,13 @@ export default function MainPanel() {
           </button>
         </div>
       </div>
+
+      {/* Block toggle toolbar */}
+      <BlockToggleToolbar
+        blockExpansion={blockExpansion}
+        blockColors={blockColors}
+        onToggle={toggleBlockExpansion}
+      />
 
       {/* Search bar */}
       <MsgSearchBar visible={searchVisible} onClose={() => setSearchVisible(false)} />
@@ -395,6 +453,7 @@ export default function MainPanel() {
                 key={startIdx + i}
                 entry={entry}
                 allThinkingExpanded={allThinkingExpanded}
+                blockExpansion={blockExpansion}
                 blockColors={blockColors}
                 settings={appSettings}
                 toolInputsMap={toolInputsMap}

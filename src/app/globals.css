@@ -1666,3 +1666,235 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
 .theme-light .tr-message-bubble {
   background: rgba(245, 158, 11, 0.06);
 }
+
+/* ── Block Toggle Toolbar ────────── */
+
+.block-toggle-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.block-pill {
+  padding: 3px 10px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 9999px;
+  border: 1px solid;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  line-height: 1.3;
+}
+
+.block-pill:hover {
+  opacity: 0.85;
+}
+
+.block-pill.active {
+  color: #fff !important;
+}
+
+/* ── Tree Panel Toggle Button ────── */
+
+.tree-panel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* ── Session Tree Panel ──────────── */
+
+.tree-panel {
+  width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  animation: slideInRight 0.2s ease;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.tree-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.tree-panel-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.tree-panel-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.tree-panel-close:hover {
+  color: var(--text-1);
+  border-color: var(--accent-border);
+}
+
+.tree-panel-body {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── React Flow overrides ────────── */
+
+.session-tree-flow {
+  background: var(--bg) !important;
+}
+
+.session-tree-flow .react-flow__edge-path {
+  stroke: var(--border);
+}
+
+.session-tree-flow .react-flow__controls {
+  display: none;
+}
+
+.session-tree-minimap {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+}
+
+.tree-handle {
+  width: 6px !important;
+  height: 6px !important;
+  background: var(--border) !important;
+  border: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+/* ── Tree Node Card ──────────────── */
+
+.tree-node-card {
+  width: 200px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.tree-node-card:hover {
+  border-color: var(--accent-border);
+}
+
+.tree-node-card.current {
+  border-color: #9B72EF;
+  box-shadow: 0 0 0 1px rgba(155, 114, 239, 0.25);
+}
+
+.tree-node-card.subagent {
+  width: 180px;
+  padding: 6px 10px;
+}
+
+.tree-node-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.tree-node-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.tree-node-badge {
+  font-size: 9px;
+  font-family: var(--mono);
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tree-node-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tree-node-msgs {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.tree-node-time {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+/* ── Light theme: tree panel ─────── */
+
+.theme-light .session-tree-flow {
+  background: #F5F5F7 !important;
+}
+
+.theme-light .tree-node-card {
+  background: #FFFFFF;
+  border-color: #E2E2E6;
+}
+
+.theme-light .tree-node-card.current {
+  border-color: #7C5CC5;
+  box-shadow: 0 0 0 1px rgba(124, 92, 197, 0.25);
+}
+
+.theme-light .session-tree-minimap {
+  background: #FFFFFF !important;
+  border-color: #E2E2E6 !important;
+}

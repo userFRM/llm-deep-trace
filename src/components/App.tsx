@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { useStore } from "@/lib/store";
 import { useSSE } from "@/lib/useSSE";
 import Sidebar from "./Sidebar";
 import MainPanel from "./MainPanel";
 
+const SessionTree = lazy(() => import("./SessionTree"));
+
 export default function App() {
   const setSessions = useStore((s) => s.setSessions);
   const setCurrentSession = useStore((s) => s.setCurrentSession);
   const currentSessionId = useStore((s) => s.currentSessionId);
+  const sessions = useStore((s) => s.sessions);
+  const treePanelOpen = useStore((s) => s.treePanelOpen);
+  const setTreePanelOpen = useStore((s) => s.setTreePanelOpen);
   const setTheme = useStore((s) => s.setTheme);
   const initFromLocalStorage = useStore((s) => s.initFromLocalStorage);
 
@@ -58,6 +63,16 @@ export default function App() {
     <div className="app-shell">
       <Sidebar />
       <MainPanel />
+      {treePanelOpen && (
+        <Suspense fallback={<div className="tree-panel"><div className="loading-state"><div className="spinner" />Loading&hellip;</div></div>}>
+          <SessionTree
+            sessions={sessions}
+            currentSessionId={currentSessionId}
+            onSelectSession={setCurrentSession}
+            onClose={() => setTreePanelOpen(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
