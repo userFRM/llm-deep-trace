@@ -237,7 +237,8 @@ export function listClaudeSessions(): SessionInfo[] {
       }
 
       const isSubagent = filePath.includes("subagents");
-      const parentId = isSubagent ? path.basename(path.dirname(path.dirname(filePath))) : undefined;
+      // Subagent files live at <project>/subagents/<parentSessionId>/<subagent>.jsonl
+      const parentId = isSubagent ? path.basename(path.dirname(filePath)) : undefined;
       const sessionId = path.basename(filePath, ".jsonl");
 
       sessions.push({

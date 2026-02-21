@@ -66,19 +66,17 @@ function buildTurns(messages: NormalizedMessage[]): TurnInfo[] {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     if (msg.message?.role !== "user") continue;
-    // Skip tool_result messages (role=user but are tool responses)
     if (msg.type === "tool_result" || msg.message.toolCallId) continue;
 
     turnIndex++;
     const userText = extractText(msg.message.content);
-    const preview = cleanPreview(userText).slice(0, 40) || `Turn ${turnIndex}`;
+    const preview = cleanPreview(userText).slice(0, 45) || `Turn ${turnIndex}`;
 
     const subagents: SubagentInfo[] = [];
 
     // Scan forward for assistant responses until next user turn
     for (let j = i + 1; j < messages.length; j++) {
       const next = messages[j];
-      // Stop at next real user message
       if (
         next.message?.role === "user" &&
         !next.message.toolCallId &&
@@ -120,6 +118,15 @@ function buildTurns(messages: NormalizedMessage[]): TurnInfo[] {
   }
 
   return turns;
+}
+
+// ── Filter turns for display: if >50, show every 5th + turns with subagent spawns ──
+
+function filterTurns(turns: TurnInfo[]): TurnInfo[] {
+  if (turns.length <= 50) return turns;
+  return turns.filter(
+    (t) => t.turnIndex % 5 === 0 || t.subagents.length > 0
+  );
 }
 
 // ── Custom Nodes ──
@@ -178,17 +185,6 @@ function SubagentNodeComponent({ data }: NodeProps<Node<SubagentNodeData>>) {
           <span className="tree-node-title">{data.label}</span>
           <span className="tree-node-badge">subagent</span>
         </div>
-        <div className="tree-node-arrow-row">
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M3 8h10M10 4l3 4-3 4"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
       </div>
     </>
   );
@@ -211,8 +207,8 @@ function layoutTurns(
 
   const TURN_X = 0;
   const SUBAGENT_X = 280;
-  const ROW_HEIGHT = 76;
-  const SUB_ROW_HEIGHT = 52;
+  const ROW_HEIGHT = 100;
+  const SUB_ROW_HEIGHT = 56;
   const ROOT_Y = 0;
 
   // Root session node
@@ -223,7 +219,7 @@ function layoutTurns(
     data: { label },
   });
 
-  let y = 56; // start below root
+  let y = 70;
 
   for (let i = 0; i < turns.length; i++) {
     const turn = turns[i];
@@ -248,7 +244,7 @@ function layoutTurns(
       source: prevId,
       target: turnId,
       sourceHandle: prevId === "root" ? undefined : "bottom",
-      type: "default",
+      type: "straight",
       style: { stroke: "var(--border)", strokeWidth: 1 },
     });
 
@@ -270,8 +266,8 @@ function layoutTurns(
         source: turnId,
         target: subId,
         sourceHandle: "right",
-        type: "default",
-        style: { stroke: "#9B72EF", strokeWidth: 1.5, strokeDasharray: "4 2" },
+        type: "straight",
+        style: { stroke: "var(--border)", strokeWidth: 1 },
       });
     }
 
@@ -301,7 +297,7 @@ function InnerFlow({
 }) {
   const { fitView } = useReactFlow();
 
-  const turns = useMemo(() => buildTurns(messages), [messages]);
+  const turns = useMemo(() => filterTurns(buildTurns(messages)), [messages]);
   const { nodes, edges } = useMemo(
     () => layoutTurns(turns, label),
     [turns, label]

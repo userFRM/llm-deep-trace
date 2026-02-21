@@ -32,10 +32,20 @@ const sourceColors: Record<string, string> = {
   codex: "#F59E0B",
 };
 
+const BotSvg = () => (
+  <svg viewBox="0 0 14 14" width="12" height="12" fill="none" xmlns="http://www.w3.org/2000/svg" className="bot-icon">
+    <rect x="2" y="5" width="10" height="7" rx="1.5" stroke="#22C55E" strokeWidth="1.4"/>
+    <rect x="5" y="2" width="4" height="3" rx="1" stroke="#22C55E" strokeWidth="1.4"/>
+    <circle cx="5" cy="8.5" r="1" fill="#22C55E"/>
+    <circle cx="9" cy="8.5" r="1" fill="#22C55E"/>
+  </svg>
+);
+
 function SessionItem({
   session,
   isSubagent,
   childCount,
+  hasSubagents,
   isExpanded,
   isSelected,
   compact,
@@ -45,6 +55,7 @@ function SessionItem({
   session: SessionInfo;
   isSubagent: boolean;
   childCount: number;
+  hasSubagents: boolean;
   isExpanded: boolean;
   isSelected: boolean;
   compact: boolean;
@@ -86,6 +97,7 @@ function SessionItem({
         <span className={`session-label ${isSubagent ? "sub" : ""}`}>
           {label}
         </span>
+        {hasSubagents && <BotSvg />}
         {isSubagent && <span className="subagent-badge">subagent</span>}
         <span className="session-time">
           {relativeTime(session.lastUpdated)}
@@ -152,9 +164,28 @@ export default function Sidebar() {
     [setSearchQuery]
   );
 
-  // Build parent/child map
+  // Build parent/child map — use full sessions list for detection
   const childrenOf = new Map<string, SessionInfo[]>();
   const childIds = new Set<string>();
+  const parentIds = new Set<string>();
+
+  // First pass: detect all parent-child relationships from full sessions list
+  for (const s of sessions) {
+    const isKovaSub = s.key?.startsWith("agent:main:subagent:");
+    let parentId = s.parentSessionId;
+    if (!parentId && isKovaSub) {
+      const main = sessions.find((p) => p.key === "agent:main:main");
+      if (main) parentId = main.sessionId;
+    }
+    if (parentId) {
+      parentIds.add(parentId);
+      // Also match by key
+      const parentByKey = sessions.find((p) => p.key === parentId);
+      if (parentByKey) parentIds.add(parentByKey.sessionId);
+    }
+  }
+
+  // Second pass: build children map from filtered sessions only (for display)
   for (const s of filteredSessions) {
     const isKovaSub = s.key?.startsWith("agent:main:subagent:");
     let parentId = s.parentSessionId;
@@ -166,6 +197,25 @@ export default function Sidebar() {
       if (!childrenOf.has(parentId)) childrenOf.set(parentId, []);
       childrenOf.get(parentId)!.push(s);
       childIds.add(s.sessionId);
+    }
+  }
+
+  // hasSubagents: true if any session in the FULL list has this session as parent
+  const hasSubagentsSet = new Set<string>();
+  for (const s of sessions) {
+    const pid = s.parentSessionId;
+    if (pid) {
+      hasSubagentsSet.add(pid);
+      // Also check if pid matches a session's key
+      for (const p of sessions) {
+        if (p.key === pid) hasSubagentsSet.add(p.sessionId);
+        if (p.sessionId === pid) hasSubagentsSet.add(p.sessionId);
+      }
+    }
+    // Kova subagent key pattern
+    if (s.key?.startsWith("agent:main:subagent:")) {
+      const main = sessions.find((p) => p.key === "agent:main:main");
+      if (main) hasSubagentsSet.add(main.sessionId);
     }
   }
 
@@ -301,6 +351,7 @@ export default function Sidebar() {
                     session={s}
                     isSubagent={false}
                     childCount={children.length}
+                    hasSubagents={hasSubagentsSet.has(s.sessionId)}
                     isExpanded={isExpanded}
                     isSelected={currentSessionId === s.sessionId}
                     compact={compactSidebar}
@@ -315,6 +366,7 @@ export default function Sidebar() {
                           session={c}
                           isSubagent={true}
                           childCount={0}
+                          hasSubagents={hasSubagentsSet.has(c.sessionId)}
                           isExpanded={false}
                           isSelected={currentSessionId === c.sessionId}
                           compact={compactSidebar}

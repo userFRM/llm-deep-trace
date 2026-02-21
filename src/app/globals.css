@@ -949,18 +949,16 @@ html, body {
   line-height: 1.5;
 }
 
-/* ── Tool call (with accent border) ── */
+/* ── Tool call (with accent dot) ── */
 
 .tool-call {
   margin: 8px 0;
   border-radius: var(--radius);
   overflow: hidden;
-  border-left: 2px solid var(--block-accent, var(--indigo));
-  padding-left: 8px;
 }
 
 .tool-call.expanded {
-  background: color-mix(in srgb, var(--block-accent, var(--indigo)) 4%, transparent);
+  background: color-mix(in srgb, var(--block-accent, var(--indigo)) 2%, transparent);
 }
 
 .tool-call-header {
@@ -983,6 +981,13 @@ html, body {
 }
 
 .tc-chevron.open { transform: rotate(90deg); }
+
+.tc-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
 
 .tc-name-label {
   font-family: var(--mono);
@@ -1114,12 +1119,10 @@ html, body {
 .tool-result-wrap {
   margin: 4px 0 8px 0;
   border-radius: var(--radius);
-  border-left: 2px solid var(--block-accent, var(--indigo));
-  padding-left: 8px;
 }
 
 .tool-result-wrap.expanded {
-  background: color-mix(in srgb, var(--block-accent, var(--indigo)) 3%, transparent);
+  background: color-mix(in srgb, var(--block-accent, var(--indigo)) 2%, transparent);
 }
 
 .tool-result-header {
@@ -1474,8 +1477,13 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
 
 /* ── Thinking hint ───────────────── */
 
+.thinking-sep {
+  font-size: 10px;
+  color: var(--text-3);
+  opacity: 0.5;
+}
+
 .thinking-hint {
-  margin-left: auto;
   font-size: 10px;
   color: var(--text-3);
   font-family: var(--mono);
@@ -1546,6 +1554,13 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   font-size: 10px;
   color: var(--text-3);
   margin-right: 4px;
+}
+
+/* ── Bot icon (subagent parent indicator) ── */
+
+.bot-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 /* ── Subagent badge ──────────────── */
@@ -1779,18 +1794,17 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   background: var(--bg) !important;
 }
 
+.session-tree-flow .react-flow__background {
+  display: none !important;
+}
+
 .session-tree-flow .react-flow__edge-path {
   stroke: var(--border);
 }
 
-.session-tree-flow .react-flow__controls {
-  display: none;
-}
-
-.session-tree-minimap {
-  background: var(--surface) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--radius) !important;
+.session-tree-flow .react-flow__controls,
+.session-tree-flow .react-flow__minimap {
+  display: none !important;
 }
 
 .tree-handle {

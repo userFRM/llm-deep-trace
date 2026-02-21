@@ -91,8 +91,9 @@ function ThinkingBlock({
           <ChevronSvg />
         </span>
         <span className="thinking-label">thinking</span>
+        <span className="thinking-sep">&middot;</span>
         <span className="thinking-hint">
-          {open ? "\u2039 collapse" : "expand \u203A"}
+          {open ? "collapse" : "expand"}
         </span>
       </div>
       <div className={`thinking-body ${open ? "open" : ""}`}>
@@ -192,6 +193,7 @@ function ToolCallBlock({
         <span className={`tc-chevron ${expanded ? "open" : ""}`}>
           <ChevronSvg />
         </span>
+        <span className="tc-dot" style={{ background: accent }} />
         <span className="tc-name-label">{name}</span>
         {!expanded && desc && <span className="tc-desc">{desc}</span>}
       </div>
@@ -545,6 +547,7 @@ function ToolResultBlock({
         <span className={`tc-chevron ${expanded ? "open" : ""}`}>
           <ChevronSvg />
         </span>
+        <span className="tc-dot" style={{ background: accent }} />
         <span className={`tr-status-inline ${isError ? "err" : ""}`}>
           {toolName || "tool"} {isError ? "error" : "result"}
         </span>
