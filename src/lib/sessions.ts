@@ -142,6 +142,7 @@ export function listKovaSessions(): SessionInfo[] {
     sessions.push({
       sessionId,
       key,
+      title: (meta.title as string) || undefined,
       lastUpdated: updatedAt,
       channel: (meta.lastChannel as string) || "",
       chatType: (meta.chatType as string) || "",

@@ -158,6 +158,8 @@ export default function MainPanel() {
   const setCurrentSession = useStore((s) => s.setCurrentSession);
   const setMessages = useStore((s) => s.setMessages);
   const setLoading = useStore((s) => s.setLoading);
+  const blockColors = useStore((s) => s.blockColors);
+  const appSettings = useStore((s) => s.settings);
 
   const messagesRef = useRef<HTMLDivElement>(null);
   const [searchVisible, setSearchVisible] = useState(false);
@@ -393,6 +395,8 @@ export default function MainPanel() {
                 key={startIdx + i}
                 entry={entry}
                 allThinkingExpanded={allThinkingExpanded}
+                blockColors={blockColors}
+                settings={appSettings}
                 toolInputsMap={toolInputsMap}
                 onNavigateSession={handleNavigateToSession}
               />

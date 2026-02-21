@@ -11,8 +11,12 @@ export default function App() {
   const setCurrentSession = useStore((s) => s.setCurrentSession);
   const currentSessionId = useStore((s) => s.currentSessionId);
   const setTheme = useStore((s) => s.setTheme);
+  const initFromLocalStorage = useStore((s) => s.initFromLocalStorage);
 
   useEffect(() => {
+    // Initialize all persisted settings from localStorage
+    initFromLocalStorage();
+
     try {
       const saved = localStorage.getItem("kova-theme") || "system";
       setTheme(saved);
@@ -31,7 +35,7 @@ export default function App() {
     };
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
-  }, [setTheme]);
+  }, [setTheme, initFromLocalStorage]);
 
   useEffect(() => {
     fetch("/api/all-sessions")

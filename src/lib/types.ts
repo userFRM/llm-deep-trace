@@ -2,6 +2,7 @@ export interface SessionInfo {
   sessionId: string;
   key: string;
   label?: string;
+  title?: string;
   lastUpdated: number;
   channel: string;
   chatType: string;
@@ -16,6 +17,38 @@ export interface SessionInfo {
   model?: string;
   cwd?: string;
 }
+
+export interface BlockColors {
+  exec: string;
+  file: string;
+  web: string;
+  browser: string;
+  msg: string;
+  agent: string;
+  thinking: string;
+}
+
+export interface AppSettings {
+  showTimestamps: boolean;
+  autoExpandToolCalls: boolean;
+  compactSidebar: boolean;
+}
+
+export const DEFAULT_BLOCK_COLORS: BlockColors = {
+  exec: "#22C55E",
+  file: "#3B82F6",
+  web: "#8B5CF6",
+  browser: "#06B6D4",
+  msg: "#F59E0B",
+  agent: "#9B72EF",
+  thinking: "#71717A",
+};
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  showTimestamps: true,
+  autoExpandToolCalls: false,
+  compactSidebar: false,
+};
 
 export interface NormalizedMessage {
   type: string;

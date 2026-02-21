@@ -212,8 +212,67 @@ export function channelIcon(ch: string): string {
   return "";
 }
 
-export function sessionLabel(s: { key: string; label?: string; sessionId: string }): string {
-  if (s.key === "agent:main:main") return "main session";
+export function sessionLabel(s: {
+  key: string;
+  label?: string;
+  title?: string;
+  sessionId: string;
+  source?: string;
+  preview?: string;
+  cwd?: string;
+  isSubagent?: boolean;
+}): string {
+  const src = s.source || "kova";
+
+  // Kova/OpenClaw sessions
+  if (src === "kova") {
+    if (s.key === "agent:main:main") return "main session";
+    if (s.title) return s.title;
+    if (s.label) return s.label;
+    if (s.preview) return s.preview.slice(0, 60);
+    if (s.key) {
+      const parts = s.key.split(":");
+      if (parts.length > 2) return parts.slice(1).join(":");
+      return s.key;
+    }
+    return s.sessionId.slice(0, 14) + "\u2026";
+  }
+
+  // Claude Code sessions
+  if (src === "claude") {
+    if (s.isSubagent) {
+      return "subagent " + s.sessionId.slice(0, 8);
+    }
+    const slug = s.label || s.key || "";
+    let project = slug;
+    if (slug.startsWith("~/")) {
+      const parts = slug.split("/");
+      project = parts[parts.length - 1] || parts[parts.length - 2] || slug;
+    } else if (slug.startsWith("-") || slug.includes("-")) {
+      const parts = slug.replace(/^-/, "").split(/[-/]/);
+      project = parts[parts.length - 1] || slug;
+    }
+    if (s.preview && project) {
+      const snippet = s.preview.slice(0, 40).replace(/\n/g, " ");
+      return `${project}: ${snippet}`;
+    }
+    return project || s.sessionId.slice(0, 14) + "\u2026";
+  }
+
+  // Codex sessions
+  if (src === "codex") {
+    if (s.cwd) {
+      const base = s.cwd.split("/").pop() || s.cwd;
+      if (s.preview) {
+        return `${base}: ${s.preview.slice(0, 40).replace(/\n/g, " ")}`;
+      }
+      return base;
+    }
+    if (s.label) return s.label;
+    return s.sessionId.slice(0, 14) + "\u2026";
+  }
+
+  // Fallback
   if (s.label) return s.label;
   if (s.key) {
     const parts = s.key.split(":");
@@ -221,6 +280,19 @@ export function sessionLabel(s: { key: string; label?: string; sessionId: string
     return s.key;
   }
   return s.sessionId.slice(0, 14) + "\u2026";
+}
+
+/** Map tool name to its block color category key */
+export function toolColorKey(name: string): string {
+  switch (name) {
+    case "exec": case "Bash": return "exec";
+    case "read": case "Read": case "write": case "Write": case "edit": case "Edit": case "Glob": case "Grep": return "file";
+    case "web_search": case "WebSearch": case "web_fetch": case "WebFetch": return "web";
+    case "browser": case "Browser": return "browser";
+    case "message": case "Message": case "SendMessage": return "msg";
+    case "sessions_spawn": case "Task": case "task": return "agent";
+    default: return "";
+  }
 }
 
 export function copyToClipboard(text: string, label?: string): Promise<void> {

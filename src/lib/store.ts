@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { SessionInfo, RawEntry, NormalizedMessage } from "./types";
+import { SessionInfo, RawEntry, NormalizedMessage, BlockColors, AppSettings, DEFAULT_BLOCK_COLORS, DEFAULT_SETTINGS } from "./types";
 import { normalizeEntries } from "./normalizers";
 
 interface AppState {
@@ -17,6 +17,10 @@ interface AppState {
   expandedGroups: Set<string>;
   allThinkingExpanded: boolean;
   theme: string;
+  sidebarWidth: number;
+  settingsOpen: boolean;
+  blockColors: BlockColors;
+  settings: AppSettings;
 
   setSessions: (sessions: SessionInfo[]) => void;
   setCurrentSession: (id: string | null) => void;
@@ -28,7 +32,66 @@ interface AppState {
   toggleGroupExpanded: (sessionId: string) => void;
   toggleAllThinking: () => void;
   setTheme: (theme: string) => void;
+  setSidebarWidth: (w: number) => void;
+  setSettingsOpen: (open: boolean) => void;
+  setBlockColor: (key: keyof BlockColors, color: string) => void;
+  resetBlockColor: (key: keyof BlockColors) => void;
+  setSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  initFromLocalStorage: () => void;
   applyFilter: () => void;
+}
+
+function loadExpandedGroups(): Set<string> {
+  try {
+    const raw = localStorage.getItem("llm-deep-trace-expanded");
+    if (raw) return new Set(JSON.parse(raw));
+  } catch { /* ignore */ }
+  return new Set();
+}
+
+function saveExpandedGroups(groups: Set<string>) {
+  try {
+    localStorage.setItem("llm-deep-trace-expanded", JSON.stringify([...groups]));
+  } catch { /* ignore */ }
+}
+
+function loadBlockColors(): BlockColors {
+  try {
+    const raw = localStorage.getItem("llm-deep-trace-block-colors");
+    if (raw) return { ...DEFAULT_BLOCK_COLORS, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return { ...DEFAULT_BLOCK_COLORS };
+}
+
+function saveBlockColors(colors: BlockColors) {
+  try {
+    localStorage.setItem("llm-deep-trace-block-colors", JSON.stringify(colors));
+  } catch { /* ignore */ }
+}
+
+function loadSettings(): AppSettings {
+  try {
+    const raw = localStorage.getItem("llm-deep-trace-settings");
+    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return { ...DEFAULT_SETTINGS };
+}
+
+function saveSettings(settings: AppSettings) {
+  try {
+    localStorage.setItem("llm-deep-trace-settings", JSON.stringify(settings));
+  } catch { /* ignore */ }
+}
+
+function loadSidebarWidth(): number {
+  try {
+    const raw = localStorage.getItem("llm-deep-trace-sidebar-w");
+    if (raw) {
+      const w = parseInt(raw, 10);
+      if (w >= 200 && w <= 480) return w;
+    }
+  } catch { /* ignore */ }
+  return 280;
 }
 
 function buildGroupedSessions(list: SessionInfo[]): SessionInfo[] {
@@ -80,17 +143,6 @@ function buildGroupedSessions(list: SessionInfo[]): SessionInfo[] {
   return result;
 }
 
-function getSessionLabel(s: SessionInfo): string {
-  if (s.key === "agent:main:main") return "main session";
-  if (s.label) return s.label;
-  if (s.key) {
-    const parts = s.key.split(":");
-    if (parts.length > 2) return parts.slice(1).join(":");
-    return s.key;
-  }
-  return s.sessionId.slice(0, 14) + "\u2026";
-}
-
 export const useStore = create<AppState>((set, get) => ({
   sessions: [],
   filteredSessions: [],
@@ -104,6 +156,10 @@ export const useStore = create<AppState>((set, get) => ({
   expandedGroups: new Set<string>(),
   allThinkingExpanded: false,
   theme: "system",
+  sidebarWidth: 280,
+  settingsOpen: false,
+  blockColors: { ...DEFAULT_BLOCK_COLORS },
+  settings: { ...DEFAULT_SETTINGS },
 
   setSessions: (sessions) => {
     sessions.sort((a, b) => {
@@ -148,6 +204,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (expanded.has(sessionId)) expanded.delete(sessionId);
     else expanded.add(sessionId);
     set({ expandedGroups: expanded });
+    saveExpandedGroups(expanded);
   },
 
   toggleAllThinking: () =>
@@ -171,14 +228,51 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  setSidebarWidth: (w) => {
+    const clamped = Math.max(200, Math.min(480, w));
+    set({ sidebarWidth: clamped });
+    try {
+      localStorage.setItem("llm-deep-trace-sidebar-w", String(clamped));
+    } catch { /* ignore */ }
+  },
+
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
+
+  setBlockColor: (key, color) => {
+    const colors = { ...get().blockColors, [key]: color };
+    set({ blockColors: colors });
+    saveBlockColors(colors);
+  },
+
+  resetBlockColor: (key) => {
+    const colors = { ...get().blockColors, [key]: DEFAULT_BLOCK_COLORS[key] };
+    set({ blockColors: colors });
+    saveBlockColors(colors);
+  },
+
+  setSetting: (key, value) => {
+    const settings = { ...get().settings, [key]: value };
+    set({ settings });
+    saveSettings(settings);
+  },
+
+  initFromLocalStorage: () => {
+    set({
+      expandedGroups: loadExpandedGroups(),
+      blockColors: loadBlockColors(),
+      settings: loadSettings(),
+      sidebarWidth: loadSidebarWidth(),
+    });
+  },
+
   applyFilter: () => {
     const { sessions, searchQuery, sourceFilters } = get();
     const q = searchQuery.toLowerCase().trim();
-    let filtered = sessions.filter((s) => {
+    const filtered = sessions.filter((s) => {
       const src = s.source || "kova";
       if (!(sourceFilters as Record<string, boolean>)[src]) return false;
       if (!q) return true;
-      const label = getSessionLabel(s).toLowerCase();
+      const label = (s.label || s.title || s.key || "").toLowerCase();
       const preview = (s.preview || "").toLowerCase();
       const key = (s.key || "").toLowerCase();
       const id = (s.sessionId || "").toLowerCase();

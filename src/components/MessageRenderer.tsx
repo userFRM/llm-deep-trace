@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { NormalizedMessage } from "@/lib/types";
+import React, { useState, useEffect } from "react";
+import { NormalizedMessage, BlockColors } from "@/lib/types";
 import {
   fmtTime,
   extractText,
@@ -9,11 +9,11 @@ import {
   stripConversationMeta,
   renderMarkdown,
   highlightCode,
-  syntaxHighlightJson,
-  fileExt,
-  extToLang,
   truncStr,
   looksLikeMarkdown,
+  fileExt,
+  extToLang,
+  toolColorKey,
 } from "@/lib/client-utils";
 import CopyButton from "./CopyButton";
 
@@ -40,7 +40,7 @@ function ArgValue({ value }: { value: string }) {
   );
 }
 
-// ── Args List ── clean key→value list for tool call params ──
+// ── Args List ──
 function ArgsList({ input }: { input: Record<string, unknown> }) {
   const entries = Object.entries(input);
   if (entries.length === 0) return <div className="tc-args-empty">no arguments</div>;
@@ -64,32 +64,59 @@ function ArgsList({ input }: { input: Record<string, unknown> }) {
   );
 }
 
-// ── Thinking Block ──
-function ThinkingBlock({ text, forceOpen }: { text: string; forceOpen: boolean }) {
-  const [open, setOpen] = useState(false);
-  const isOpen = forceOpen || open;
+// ── Thinking Block ── (fixed: forceOpen only sets initial state)
+function ThinkingBlock({
+  text,
+  forceOpen,
+  accentColor,
+}: {
+  text: string;
+  forceOpen: boolean;
+  accentColor: string;
+}) {
+  const [open, setOpen] = useState(forceOpen);
+
+  useEffect(() => {
+    setOpen(forceOpen);
+  }, [forceOpen]);
 
   return (
-    <div className="thinking-block">
+    <div
+      className={`thinking-block ${open ? "expanded" : ""}`}
+      style={{ "--block-accent": accentColor } as React.CSSProperties}
+    >
       <div className="thinking-header" onClick={() => setOpen(!open)}>
-        <span className={`thinking-chevron ${isOpen ? "open" : ""}`}>
+        <span className={`thinking-chevron ${open ? "open" : ""}`}>
           <ChevronSvg />
         </span>
         <span className="thinking-label">thinking</span>
-        <span className="thinking-hint">{isOpen ? "collapse" : "expand"}</span>
+        <span className="thinking-hint">
+          {open ? "\u2039 collapse" : "expand \u203A"}
+        </span>
       </div>
-      <div className={`thinking-body ${isOpen ? "open" : ""}`}>
+      <div className={`thinking-body ${open ? "open" : ""}`}>
         <div className="thinking-body-inner">{text}</div>
       </div>
     </div>
   );
 }
 
-// ── Tool Call (collapsible) ──
-function ToolCallBlock({ block }: { block: Record<string, unknown> }) {
+// ── Tool Call (collapsible with accent color) ──
+function ToolCallBlock({
+  block,
+  blockColors,
+  autoExpand,
+}: {
+  block: Record<string, unknown>;
+  blockColors: BlockColors;
+  autoExpand: boolean;
+}) {
   const name = (block.name as string) || "?";
   const input = (block.input || {}) as Record<string, unknown>;
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(autoExpand);
+
+  const colorKey = toolColorKey(name);
+  const accent = colorKey ? blockColors[colorKey as keyof BlockColors] : "#888899";
 
   const getDesc = (): string => {
     switch (name) {
@@ -149,7 +176,10 @@ function ToolCallBlock({ block }: { block: Record<string, unknown> }) {
   const desc = getDesc();
 
   return (
-    <div className="tool-call">
+    <div
+      className={`tool-call ${expanded ? "expanded" : ""}`}
+      style={{ "--block-accent": accent } as React.CSSProperties}
+    >
       <div className="tool-call-header" onClick={() => setExpanded(!expanded)}>
         <span className={`tc-chevron ${expanded ? "open" : ""}`}>
           <ChevronSvg />
@@ -164,15 +194,21 @@ function ToolCallBlock({ block }: { block: Record<string, unknown> }) {
   );
 }
 
-// ── Tool Result ──
+// ── Tool Result (collapsible with accent color) ──
 function ToolResultBlock({
   msg,
   time,
+  showTime,
+  blockColors,
+  autoExpand,
   toolInputsMap,
   onNavigateSession,
 }: {
   msg: NonNullable<NormalizedMessage["message"]>;
   time: string;
+  showTime: boolean;
+  blockColors: BlockColors;
+  autoExpand: boolean;
   toolInputsMap?: Map<string, Record<string, unknown>>;
   onNavigateSession?: (key: string) => void;
 }) {
@@ -181,7 +217,51 @@ function ToolResultBlock({
   const text = extractResultText(msg.content);
   const [showFull, setShowFull] = useState(false);
   const [mdrOpen, setMdrOpen] = useState(false);
+  const [expanded, setExpanded] = useState(autoExpand);
   const toolInput = toolInputsMap?.get(msg.toolCallId || "") || {};
+
+  const colorKey = toolColorKey(toolName);
+  const accent = colorKey ? blockColors[colorKey as keyof BlockColors] : "#888899";
+
+  // Build a 1-line summary for collapsed view
+  const getSummary = (): string => {
+    switch (toolName) {
+      case "exec":
+      case "Bash": {
+        const lines = text.split("\n").filter(Boolean);
+        if (lines.length === 0) return "(empty output)";
+        return lines[0].slice(0, 100);
+      }
+      case "write":
+      case "Write":
+      case "edit":
+      case "Edit": {
+        const fp = (toolInput.file_path as string) || (toolInput.path as string) || "";
+        return fp ? `${fp.split("/").pop()} ${isError ? "failed" : "ok"}` : (isError ? "failed" : "ok");
+      }
+      case "Read": {
+        const fp = (toolInput.file_path as string) || (toolInput.path as string) || "";
+        return fp ? fp.split("/").pop() || "file" : "file read";
+      }
+      case "web_search":
+      case "WebSearch":
+        return (toolInput.query as string)?.slice(0, 60) || "search results";
+      case "web_fetch":
+      case "WebFetch":
+        return (toolInput.url as string)?.slice(0, 60) || "fetched content";
+      case "message":
+      case "Message":
+      case "SendMessage":
+        return "sent";
+      case "sessions_spawn":
+        return "subagent dispatched";
+      case "Task":
+      case "task":
+        return text.slice(0, 80).replace(/\n/g, " ") || "task result";
+      default:
+        return text.slice(0, 80).replace(/\n/g, " ") || (isError ? "error" : "ok");
+    }
+  };
 
   let bodyHtml = null;
 
@@ -226,50 +306,29 @@ function ToolResultBlock({
     );
   };
 
-  switch (toolName) {
-    case "exec":
-    case "Bash": {
-      const { t, trunc } = truncStr(text, 4000);
-      const displayText = showFull ? text : t;
-      const lineCount = displayText.split("\n").length;
-      const maxH = lineCount > 20 ? 360 : undefined;
-      bodyHtml = (
-        <>
-          {renderTerminal(displayText, maxH)}
-          {trunc && !showFull && (
-            <button className="show-more" onClick={() => setShowFull(true)}>
-              show more ({text.length.toLocaleString()} chars)
-            </button>
-          )}
-        </>
-      );
-      break;
-    }
-    case "write":
-    case "Write":
-    case "edit":
-    case "Edit": {
-      const fp = (toolInput.file_path as string) || (toolInput.path as string) || "";
-      const displayMsg = text.slice(0, 200) || (toolName.toLowerCase() === "write" ? "Written" : "Edited");
-      bodyHtml = (
-        <div className="tr-success">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <path d="M3 8l4 4 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-          {fp ? `${displayMsg}` : displayMsg}
-        </div>
-      );
-      break;
-    }
-    case "Read": {
-      const fp = (toolInput.file_path as string) || (toolInput.path as string) || "";
-      const ext = fp ? fileExt(fp) : "";
-      const lang = ext ? extToLang(ext) : "";
-      const { t, trunc } = truncStr(text, 4000);
-      if (lang) {
+  // Build special body for "message" tool — speech bubble style
+  const isMessageTool = toolName === "message" || toolName === "Message" || toolName === "SendMessage";
+
+  if (isMessageTool) {
+    const target = (toolInput.recipient as string) || (toolInput.target as string) || "";
+    const content = text || "Sent";
+    bodyHtml = (
+      <div className="tr-message-bubble">
+        {target && <div className="tr-message-target">{target}</div>}
+        <div className="tr-message-content">{content === "Sent" ? "Sent" : content.slice(0, 300)}</div>
+      </div>
+    );
+  } else {
+    switch (toolName) {
+      case "exec":
+      case "Bash": {
+        const { t, trunc } = truncStr(text, 4000);
+        const displayText = showFull ? text : t;
+        const lineCount = displayText.split("\n").length;
+        const maxH = lineCount > 20 ? 360 : undefined;
         bodyHtml = (
           <>
-            {renderCodeBlock(showFull ? text : t, lang, 380)}
+            {renderTerminal(displayText, maxH)}
             {trunc && !showFull && (
               <button className="show-more" onClick={() => setShowFull(true)}>
                 show more ({text.length.toLocaleString()} chars)
@@ -277,57 +336,75 @@ function ToolResultBlock({
             )}
           </>
         );
-      } else {
-        bodyHtml = (
-          <>
-            {renderTerminal(showFull ? text : t, 380)}
-            {trunc && !showFull && (
-              <button className="show-more" onClick={() => setShowFull(true)}>
-                show more ({text.length.toLocaleString()} chars)
-              </button>
-            )}
-          </>
-        );
+        break;
       }
-      break;
-    }
-    case "web_search":
-    case "WebSearch": {
-      try {
-        const results = JSON.parse(text);
-        if (Array.isArray(results)) {
+      case "write":
+      case "Write":
+      case "edit":
+      case "Edit": {
+        const fp = (toolInput.file_path as string) || (toolInput.path as string) || "";
+        const displayMsg = text.slice(0, 200) || (toolName.toLowerCase() === "write" ? "Written" : "Edited");
+        bodyHtml = (
+          <div className="tr-success">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8l4 4 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            {fp ? `${displayMsg}` : displayMsg}
+          </div>
+        );
+        break;
+      }
+      case "Read": {
+        const fp = (toolInput.file_path as string) || (toolInput.path as string) || "";
+        const ext = fp ? fileExt(fp) : "";
+        const lang = ext ? extToLang(ext) : "";
+        const { t, trunc } = truncStr(text, 4000);
+        if (lang) {
           bodyHtml = (
-            <div className="tr-search-results">
-              {results.slice(0, 8).map((r, i) => (
-                <div key={i} className="tr-search-card">
-                  <div className="sr-title">
-                    <span className="sr-number">{i + 1}.</span> {r.title || ""}
-                  </div>
-                  <div className="sr-url">{r.url || r.link || ""}</div>
-                  <div className="sr-snip">{r.snippet || r.description || ""}</div>
-                </div>
-              ))}
-            </div>
+            <>
+              {renderCodeBlock(showFull ? text : t, lang, 380)}
+              {trunc && !showFull && (
+                <button className="show-more" onClick={() => setShowFull(true)}>
+                  show more ({text.length.toLocaleString()} chars)
+                </button>
+              )}
+            </>
           );
-          break;
+        } else {
+          bodyHtml = (
+            <>
+              {renderTerminal(showFull ? text : t, 380)}
+              {trunc && !showFull && (
+                <button className="show-more" onClick={() => setShowFull(true)}>
+                  show more ({text.length.toLocaleString()} chars)
+                </button>
+              )}
+            </>
+          );
         }
-      } catch { /* fallthrough */ }
-      const { t, trunc } = truncStr(text, 800);
-      bodyHtml = (
-        <>
-          {renderTerminal(showFull ? text : t)}
-          {trunc && !showFull && (
-            <button className="show-more" onClick={() => setShowFull(true)}>show more</button>
-          )}
-        </>
-      );
-      break;
-    }
-    case "web_fetch":
-    case "WebFetch": {
-      if (looksLikeMarkdown(text)) {
-        bodyHtml = renderMdResult(text);
-      } else {
+        break;
+      }
+      case "web_search":
+      case "WebSearch": {
+        try {
+          const results = JSON.parse(text);
+          if (Array.isArray(results)) {
+            bodyHtml = (
+              <div className="tr-search-results">
+                {results.slice(0, 8).map((r, i) => (
+                  <div key={i} className="tr-search-card">
+                    <div className="sr-title">
+                      <span className="sr-number">{i + 1}.</span> {r.title || ""}
+                    </div>
+                    <div className="sr-url">{r.url || r.link || ""}</div>
+                    <div className="sr-snip">{r.snippet || r.description || ""}</div>
+                  </div>
+                ))}
+              </div>
+            );
+            break;
+          }
+        } catch { /* fallthrough */ }
         const { t, trunc } = truncStr(text, 800);
         bodyHtml = (
           <>
@@ -337,119 +414,139 @@ function ToolResultBlock({
             )}
           </>
         );
+        break;
       }
-      break;
-    }
-    case "message":
-    case "Message": {
-      bodyHtml = (
-        <div className="tr-success">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <path d="M3 8l4 4 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-          Sent
-        </div>
-      );
-      break;
-    }
-    case "tts": {
-      bodyHtml = (
-        <div className="tr-success">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <path d="M3 8l4 4 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-          audio delivered
-        </div>
-      );
-      break;
-    }
-    case "sessions_spawn": {
-      try {
-        const r = JSON.parse(text);
-        const key = r.childSessionKey || "";
-        const childId = r.childSessionId || "";
-        const status = r.status || "unknown";
-        const label = r.label || (key ? key.split(":subagent:")[1] || key.split(":").pop() : "");
-        const ok = status === "accepted" || status === "ok";
+      case "web_fetch":
+      case "WebFetch": {
+        if (looksLikeMarkdown(text)) {
+          bodyHtml = renderMdResult(text);
+        } else {
+          const { t, trunc } = truncStr(text, 800);
+          bodyHtml = (
+            <>
+              {renderTerminal(showFull ? text : t)}
+              {trunc && !showFull && (
+                <button className="show-more" onClick={() => setShowFull(true)}>show more</button>
+              )}
+            </>
+          );
+        }
+        break;
+      }
+      case "tts": {
         bodyHtml = (
-          <div className="spawn-nav-card">
-            <div className={`spawn-nav-status ${ok ? "" : "err"}`}>
-              <span className="dot" />
-              {ok ? "subagent dispatched" : "dispatch: " + status}
-            </div>
-            {key && (
-              <div
-                className="spawn-session-btn"
-                onClick={() => onNavigateSession?.(childId || key)}
-                role="button"
-                tabIndex={0}
-              >
-                <div className="ssb-body">
-                  <div className="ssb-title">{label}</div>
-                  <div className="ssb-key">{key.includes(":subagent:") ? key.split(":subagent:")[1] : key.slice(0, 24)}</div>
-                </div>
-                <div className="ssb-arrow-col">
-                  <ChevronSvg size={14} />
-                </div>
-              </div>
-            )}
+          <div className="tr-success">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8l4 4 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            audio delivered
           </div>
         );
-      } catch {
-        const { t } = truncStr(text, 300);
-        bodyHtml = renderTerminal(t);
+        break;
       }
-      break;
-    }
-    case "Task":
-    case "task": {
-      if (looksLikeMarkdown(text)) {
-        bodyHtml = renderMdResult(text);
-      } else {
-        const { t, trunc } = truncStr(text, 600);
-        bodyHtml = (
-          <>
-            {renderTerminal(showFull ? text : t)}
-            {trunc && !showFull && (
-              <button className="show-more" onClick={() => setShowFull(true)}>show more</button>
-            )}
-          </>
-        );
+      case "sessions_spawn": {
+        try {
+          const r = JSON.parse(text);
+          const key = r.childSessionKey || "";
+          const childId = r.childSessionId || "";
+          const status = r.status || "unknown";
+          const label = r.label || (key ? key.split(":subagent:")[1] || key.split(":").pop() : "");
+          const ok = status === "accepted" || status === "ok";
+          bodyHtml = (
+            <div className="spawn-nav-card">
+              <div className={`spawn-nav-status ${ok ? "" : "err"}`}>
+                <span className="dot" />
+                {ok ? "subagent dispatched" : "dispatch: " + status}
+              </div>
+              {key && (
+                <div
+                  className="spawn-session-btn"
+                  onClick={() => onNavigateSession?.(childId || key)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="ssb-body">
+                    <div className="ssb-title">{label}</div>
+                    <div className="ssb-key">{key.includes(":subagent:") ? key.split(":subagent:")[1] : key.slice(0, 24)}</div>
+                  </div>
+                  <div className="ssb-arrow-col">
+                    <ChevronSvg size={14} />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        } catch {
+          const { t } = truncStr(text, 300);
+          bodyHtml = renderTerminal(t);
+        }
+        break;
       }
-      break;
-    }
-    default: {
-      if (looksLikeMarkdown(text)) {
-        bodyHtml = renderMdResult(text);
-      } else {
-        const { t, trunc } = truncStr(text, 500);
-        bodyHtml = (
-          <>
-            {renderTerminal(showFull ? text : t)}
-            {trunc && !showFull && (
-              <button className="show-more" onClick={() => setShowFull(true)}>
-                show more ({text.length.toLocaleString()} chars)
-              </button>
-            )}
-          </>
-        );
+      case "Task":
+      case "task": {
+        if (looksLikeMarkdown(text)) {
+          bodyHtml = renderMdResult(text);
+        } else {
+          const { t, trunc } = truncStr(text, 600);
+          bodyHtml = (
+            <>
+              {renderTerminal(showFull ? text : t)}
+              {trunc && !showFull && (
+                <button className="show-more" onClick={() => setShowFull(true)}>show more</button>
+              )}
+            </>
+          );
+        }
+        break;
+      }
+      default: {
+        if (looksLikeMarkdown(text)) {
+          bodyHtml = renderMdResult(text);
+        } else {
+          const { t, trunc } = truncStr(text, 500);
+          bodyHtml = (
+            <>
+              {renderTerminal(showFull ? text : t)}
+              {trunc && !showFull && (
+                <button className="show-more" onClick={() => setShowFull(true)}>
+                  show more ({text.length.toLocaleString()} chars)
+                </button>
+              )}
+            </>
+          );
+        }
       }
     }
   }
 
+  const summary = getSummary();
+
   return (
-    <div className="tool-result">
-      <div className={`tr-status ${isError ? "err" : ""}`}>
-        {toolName || "tool"} {isError ? "error" : "ok"}
+    <div
+      className={`tool-result-wrap ${expanded ? "expanded" : ""}`}
+      style={{ "--block-accent": accent } as React.CSSProperties}
+    >
+      <div className="tool-result-header" onClick={() => setExpanded(!expanded)}>
+        <span className={`tc-chevron ${expanded ? "open" : ""}`}>
+          <ChevronSvg />
+        </span>
+        <span className={`tr-status-inline ${isError ? "err" : ""}`}>
+          {toolName || "tool"} {isError ? "error" : "result"}
+        </span>
+        {!expanded && <span className="tr-summary">{summary}</span>}
       </div>
-      {bodyHtml}
-      <div className="msg-time">{time}</div>
+      {expanded && (
+        <div className="tool-result-body">
+          {bodyHtml}
+          {showTime && <div className="msg-time">{time}</div>}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── User Message ──
-function UserMessage({ content, time }: { content: unknown; time: string }) {
+function UserMessage({ content, time, showTime }: { content: unknown; time: string; showTime: boolean }) {
   let text = extractText(content);
   text = stripConversationMeta(text);
   if (!text) return null;
@@ -460,13 +557,27 @@ function UserMessage({ content, time }: { content: unknown; time: string }) {
         <div className="msg-user-text">{text}</div>
         <CopyButton text={text} label="Copy text" />
       </div>
-      <div className="msg-time">{time}</div>
+      {showTime && <div className="msg-time">{time}</div>}
     </div>
   );
 }
 
 // ── Assistant Message ──
-function AssistantMessage({ content, time, allThinkingExpanded }: { content: unknown; time: string; allThinkingExpanded: boolean }) {
+function AssistantMessage({
+  content,
+  time,
+  showTime,
+  allThinkingExpanded,
+  blockColors,
+  autoExpand,
+}: {
+  content: unknown;
+  time: string;
+  showTime: boolean;
+  allThinkingExpanded: boolean;
+  blockColors: BlockColors;
+  autoExpand: boolean;
+}) {
   if (!content) return null;
 
   const textParts: React.ReactElement[] = [];
@@ -488,13 +599,25 @@ function AssistantMessage({ content, time, allThinkingExpanded }: { content: unk
         rawMdParts.push(block.text as string);
       } else if (block.type === "thinking" && block.thinking) {
         textParts.push(
-          <ThinkingBlock key={`th${i}`} text={block.thinking as string} forceOpen={allThinkingExpanded} />
+          <ThinkingBlock
+            key={`th${i}`}
+            text={block.thinking as string}
+            forceOpen={allThinkingExpanded}
+            accentColor={blockColors.thinking}
+          />
         );
       } else if (block.type === "tool_use") {
-        toolCallParts.push(<ToolCallBlock key={`tc${i}`} block={block} />);
+        toolCallParts.push(
+          <ToolCallBlock key={`tc${i}`} block={block} blockColors={blockColors} autoExpand={autoExpand} />
+        );
       } else if (block.type === "toolCall") {
         toolCallParts.push(
-          <ToolCallBlock key={`tc${i}`} block={{ id: block.id, name: block.name, input: block.arguments || block.input || {} }} />
+          <ToolCallBlock
+            key={`tc${i}`}
+            block={{ id: block.id, name: block.name, input: block.arguments || block.input || {} }}
+            blockColors={blockColors}
+            autoExpand={autoExpand}
+          />
         );
       } else {
         const fallbackText = (block.text as string) || (block.content as string) || "";
@@ -529,7 +652,7 @@ function AssistantMessage({ content, time, allThinkingExpanded }: { content: unk
             <div className="msg-text">{textParts}</div>
             <CopyButton text={combinedMd} label="Copy as markdown" />
           </div>
-          <div className="msg-time">{time}</div>
+          {showTime && <div className="msg-time">{time}</div>}
         </div>
       )}
       {toolCallParts}
@@ -641,11 +764,15 @@ function ThinkingLevelChange({ entry }: { entry: NormalizedMessage }) {
 export default function MessageRenderer({
   entry,
   allThinkingExpanded,
+  blockColors,
+  settings,
   toolInputsMap,
   onNavigateSession,
 }: {
   entry: NormalizedMessage;
   allThinkingExpanded: boolean;
+  blockColors: BlockColors;
+  settings: { showTimestamps: boolean; autoExpandToolCalls: boolean };
   toolInputsMap?: Map<string, Record<string, unknown>>;
   onNavigateSession?: (key: string) => void;
 }) {
@@ -668,14 +795,18 @@ export default function MessageRenderer({
 
   const role = msg.role;
   const time = fmtTime(entry.timestamp);
+  const showTime = settings.showTimestamps;
 
-  if (role === "user") return <UserMessage content={msg.content} time={time} />;
+  if (role === "user") return <UserMessage content={msg.content} time={time} showTime={showTime} />;
   if (role === "assistant")
     return (
       <AssistantMessage
         content={msg.content}
         time={time}
+        showTime={showTime}
         allThinkingExpanded={allThinkingExpanded}
+        blockColors={blockColors}
+        autoExpand={settings.autoExpandToolCalls}
       />
     );
   if (role === "toolResult")
@@ -683,6 +814,9 @@ export default function MessageRenderer({
       <ToolResultBlock
         msg={msg}
         time={time}
+        showTime={showTime}
+        blockColors={blockColors}
+        autoExpand={settings.autoExpandToolCalls}
         toolInputsMap={toolInputsMap}
         onNavigateSession={onNavigateSession}
       />
