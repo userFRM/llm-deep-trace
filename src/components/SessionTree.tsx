@@ -52,6 +52,7 @@ interface SessionTreeProps {
   messages: NormalizedMessage[];
   sessionId: string;
   sessionLabel: string;
+  allSessions: import("@/lib/types").SessionInfo[];
   onScrollToMessage: (messageIndex: number) => void;
   onNavigateSession: (sessionKey: string) => void;
   onClose: () => void;
@@ -314,18 +315,66 @@ function layoutTurns(
 
 function InnerFlow({
   messages,
+  sessionId: currentSessionId,
   sessionLabel: label,
+  allSessions,
   onScrollToMessage,
   onNavigateSession,
 }: {
   messages: NormalizedMessage[];
+  sessionId: string;
   sessionLabel: string;
+  allSessions: import("@/lib/types").SessionInfo[];
   onScrollToMessage: (messageIndex: number) => void;
   onNavigateSession: (sessionKey: string) => void;
 }) {
   const { fitView } = useReactFlow();
 
-  const turns = useMemo(() => filterTurns(buildTurns(messages)), [messages]);
+  // Real child sessions from the session index (works for both Task and TaskCreate/Agent Teams)
+  const childSessions = useMemo(
+    () => allSessions.filter(
+      (s) => s.parentSessionId === currentSessionId || s.parentSessionId === currentSessionId
+    ),
+    [allSessions, currentSessionId]
+  );
+
+  // Build turns from messages, then enrich subagent nodes with real session IDs
+  const turns = useMemo(() => {
+    const raw = filterTurns(buildTurns(messages));
+
+    // For each turn's subagents, try to resolve agentKey → real sessionId
+    for (const turn of raw) {
+      for (const sub of turn.subagents) {
+        if (!sub.agentKey) continue;
+        // Try to find a matching child session
+        const match = childSessions.find(
+          (s) =>
+            s.sessionId === sub.agentKey ||
+            s.sessionId.includes(sub.agentKey) ||
+            ("agent-" + sub.agentKey) === s.sessionId ||
+            s.sessionId.endsWith(sub.agentKey)
+        );
+        if (match) sub.agentKey = match.sessionId;
+      }
+    }
+
+    // Add any child sessions not already covered by turns (Agent Teams: TaskCreate-based)
+    const coveredIds = new Set(raw.flatMap((t) => t.subagents.map((s) => s.agentKey)));
+    const uncovered = childSessions.filter((s) => !coveredIds.has(s.sessionId));
+    if (uncovered.length > 0 && raw.length > 0) {
+      // Attach uncovered children to the last turn as a group
+      const lastTurn = raw[raw.length - 1];
+      for (const s of uncovered) {
+        lastTurn.subagents.push({
+          label: (s.label || s.sessionId).slice(0, 30),
+          agentKey: s.sessionId,
+        });
+      }
+    }
+
+    return raw;
+  }, [messages, childSessions]);
+
   const { nodes, edges } = useMemo(
     () => layoutTurns(turns, label),
     [turns, label]
@@ -368,7 +417,9 @@ function InnerFlow({
 
 export default function SessionTree({
   messages,
+  sessionId,
   sessionLabel: label,
+  allSessions,
   onScrollToMessage,
   onNavigateSession,
   onClose,
@@ -392,7 +443,9 @@ export default function SessionTree({
         <ReactFlowProvider>
           <InnerFlow
             messages={messages}
+            sessionId={sessionId}
             sessionLabel={label}
+            allSessions={allSessions}
             onScrollToMessage={onScrollToMessage}
             onNavigateSession={onNavigateSession}
           />

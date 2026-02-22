@@ -108,6 +108,7 @@ export default function App() {
             messages={currentMessages}
             sessionId={currentSessionId}
             sessionLabel={sessLabel}
+            allSessions={sessions}
             onScrollToMessage={handleScrollToMessage}
             onNavigateSession={handleNavigateSession}
             onClose={() => setTreePanelOpen(false)}
