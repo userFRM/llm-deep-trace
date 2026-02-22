@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useStore, BlockCategory } from "@/lib/store";
-import { BlockColors } from "@/lib/types";
-import { sessionLabel, relativeTime, channelIcon, copyToClipboard } from "@/lib/client-utils";
+import { BlockColors, NormalizedMessage, SessionInfo } from "@/lib/types";
+import { sessionLabel, relativeTime, channelIcon, copyToClipboard, extractText, extractResultText } from "@/lib/client-utils";
 import MessageRenderer from "./MessageRenderer";
 
 function MsgSearchBar({
@@ -191,6 +191,276 @@ function BlockToggleToolbar({
   );
 }
 
+// ── LLM Ref Popover ──
+function LlmRefPopover({ filePath, onClose }: { filePath: string; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  const claudeCmd = `claude --context "${filePath}" ""`;
+
+  return (
+    <div className="llm-ref-popover" ref={ref}>
+      <div className="llm-ref-path">{filePath}</div>
+      <div className="llm-ref-actions">
+        <button className="llm-ref-btn" onClick={() => { copyToClipboard(filePath); onClose(); }}>Copy path</button>
+        <button className="llm-ref-btn" onClick={() => { copyToClipboard(claudeCmd); onClose(); }}>Copy claude command</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Session Stats ──
+function SessionStatsBar({ messages, sess }: { messages: NormalizedMessage[]; sess: SessionInfo | undefined }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const stats = useMemo(() => {
+    let userCount = 0;
+    let assistantCount = 0;
+    const toolCounts: Record<string, number> = {};
+    let firstTs = "";
+    let lastTs = "";
+    let spawns = 0;
+    let tokenEstimate = 0;
+
+    for (const m of messages) {
+      if (m.timestamp) {
+        if (!firstTs) firstTs = m.timestamp;
+        lastTs = m.timestamp;
+      }
+      if (m.message?.role === "user" && m.type !== "tool_result" && !m.message.toolCallId) userCount++;
+      if (m.message?.role === "assistant") {
+        assistantCount++;
+        if (Array.isArray(m.message.content)) {
+          for (const block of m.message.content as unknown as Record<string, unknown>[]) {
+            if (block.type === "tool_use") {
+              const name = (block.name as string) || "unknown";
+              toolCounts[name] = (toolCounts[name] || 0) + 1;
+              if (name === "sessions_spawn" || name === "Task" || name === "task") spawns++;
+            }
+          }
+        }
+      }
+      if (m.message?.role === "toolResult") {
+        const name = m.message.toolName || "unknown";
+        toolCounts[name] = (toolCounts[name] || 0) + 1;
+      }
+      // Estimate tokens from _usage events or text length
+      if ((m as unknown as Record<string, unknown>).usage) {
+        const usage = (m as unknown as Record<string, unknown>).usage as Record<string, number>;
+        tokenEstimate += (usage.input_tokens || 0) + (usage.output_tokens || 0);
+      }
+    }
+
+    const duration = firstTs && lastTs
+      ? Math.max(0, new Date(lastTs).getTime() - new Date(firstTs).getTime())
+      : 0;
+
+    const topTools = Object.entries(toolCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+
+    const totalToolCalls = Object.values(toolCounts).reduce((s, v) => s + v, 0);
+
+    return { userCount, assistantCount, totalToolCalls, topTools, toolCounts, duration, spawns, tokenEstimate };
+  }, [messages]);
+
+  const fmtDuration = (ms: number) => {
+    if (ms < 60000) return Math.round(ms / 1000) + "s";
+    if (ms < 3600000) return Math.round(ms / 60000) + "m";
+    const h = Math.floor(ms / 3600000);
+    const m = Math.round((ms % 3600000) / 60000);
+    return `${h}h ${m}m`;
+  };
+
+  return (
+    <div className="stats-bar">
+      <div className="stats-summary" onClick={() => setExpanded(!expanded)}>
+        <span className="stats-item" title="Messages">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v8H4l-2 2V3z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+          {stats.userCount + stats.assistantCount}
+        </span>
+        <span className="stats-item" title="Tool calls">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M9.5 2.5l4 4-7 7-4 0 0-4 7-7z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+          {stats.totalToolCalls}
+          {stats.topTools.length > 0 && (
+            <span className="stats-tools-inline">
+              ({stats.topTools.map(([n, c]) => `${n}:${c}`).join(", ")})
+            </span>
+          )}
+        </span>
+        {stats.duration > 0 && (
+          <span className="stats-item" title="Duration">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3"/><path d="M8 5v3l2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+            {fmtDuration(stats.duration)}
+          </span>
+        )}
+        {stats.tokenEstimate > 0 && (
+          <span className="stats-item" title="Estimated tokens">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M4 8h8M6 5h4M5 11h6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+            {stats.tokenEstimate.toLocaleString()} tok
+          </span>
+        )}
+        {stats.spawns > 0 && (
+          <span className="stats-item" title="Subagent spawns">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="4" r="2" stroke="currentColor" strokeWidth="1.2"/><path d="M4 14v-2a4 4 0 018 0v2" stroke="currentColor" strokeWidth="1.2"/></svg>
+            {stats.spawns} spawns
+          </span>
+        )}
+        <span className="stats-expand-hint">{expanded ? "collapse" : "expand"}</span>
+      </div>
+      {expanded && (
+        <div className="stats-detail">
+          <div className="stats-detail-row"><span>User messages</span><span>{stats.userCount}</span></div>
+          <div className="stats-detail-row"><span>Assistant messages</span><span>{stats.assistantCount}</span></div>
+          <div className="stats-detail-row"><span>Total tool calls</span><span>{stats.totalToolCalls}</span></div>
+          {Object.entries(stats.toolCounts).sort((a, b) => b[1] - a[1]).map(([name, count]) => (
+            <div key={name} className="stats-detail-row sub"><span>{name}</span><span>{count}</span></div>
+          ))}
+          {stats.duration > 0 && <div className="stats-detail-row"><span>Duration</span><span>{fmtDuration(stats.duration)}</span></div>}
+          {stats.spawns > 0 && <div className="stats-detail-row"><span>Subagent spawns</span><span>{stats.spawns}</span></div>}
+          {stats.tokenEstimate > 0 && <div className="stats-detail-row"><span>Estimated tokens</span><span>{stats.tokenEstimate.toLocaleString()}</span></div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Error detection ──
+function useErrorInfo(messages: NormalizedMessage[]) {
+  return useMemo(() => {
+    const errors: { index: number; toolName: string }[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.message?.role === "toolResult" && m.message.isError) {
+        errors.push({ index: i, toolName: m.message.toolName || "tool" });
+      }
+    }
+    return errors;
+  }, [messages]);
+}
+
+// ── Export helpers ──
+function formatSessionMarkdown(messages: NormalizedMessage[], sess: SessionInfo | undefined): string {
+  const lines: string[] = [];
+  const title = sess ? sessionLabel(sess) : "Session";
+  const provider = sess?.source || "unknown";
+  const date = sess?.lastUpdated ? new Date(sess.lastUpdated).toLocaleDateString() : "unknown";
+  const msgCount = messages.filter(m => m.message?.role === "user" || m.message?.role === "assistant").length;
+
+  lines.push(`# Session: ${title}`);
+  lines.push(`Provider: ${provider} | Date: ${date} | Messages: ${msgCount}`);
+  lines.push("");
+  lines.push("---");
+  lines.push("");
+
+  for (const m of messages) {
+    if (m.type === "compaction") {
+      lines.push("*[context compacted]*");
+      lines.push("");
+      continue;
+    }
+    if (m.type !== "message" || !m.message) continue;
+
+    const role = m.message.role;
+    if (role === "user") {
+      const text = extractText(m.message.content);
+      if (text) {
+        lines.push(`**User:** ${text}`);
+        lines.push("");
+      }
+    } else if (role === "assistant") {
+      const text = extractText(m.message.content);
+      if (text) {
+        lines.push(`**Assistant:** ${text}`);
+        lines.push("");
+      }
+      // Include tool calls
+      if (Array.isArray(m.message.content)) {
+        for (const block of m.message.content as unknown as Record<string, unknown>[]) {
+          if (block.type === "tool_use") {
+            const name = (block.name as string) || "tool";
+            const input = (block.input || {}) as Record<string, unknown>;
+            const cmd = (input.command as string) || (input.file_path as string) || (input.query as string) || "";
+            if (cmd) {
+              lines.push(`> **${name}:** ${cmd}`);
+            } else {
+              lines.push(`> **${name}**`);
+            }
+          }
+        }
+        lines.push("");
+      }
+    } else if (role === "toolResult") {
+      const toolName = m.message.toolName || "tool";
+      const text = extractResultText(m.message.content);
+      const isError = m.message.isError;
+      const preview = text.slice(0, 200).replace(/\n/g, "\n> ");
+      if (isError) {
+        lines.push(`> **${toolName} error:**`);
+      } else {
+        lines.push(`> **${toolName} result:**`);
+      }
+      if (preview) lines.push(`> ${preview}${text.length > 200 ? "..." : ""}`);
+      lines.push("");
+    }
+
+    lines.push("---");
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+function ExportDropdown({ messages, sess, onClose }: { messages: NormalizedMessage[]; sess: SessionInfo | undefined; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  const md = useMemo(() => formatSessionMarkdown(messages, sess), [messages, sess]);
+  const title = sess ? sessionLabel(sess) : "session";
+  const filename = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60) + ".md";
+
+  const handleDownload = () => {
+    const blob = new Blob([md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    onClose();
+  };
+
+  const handleCopy = () => {
+    copyToClipboard(md);
+    onClose();
+  };
+
+  return (
+    <div className="export-dropdown" ref={ref}>
+      <button className="export-option" onClick={handleDownload}>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M4 8l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><path d="M2 13h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+        Export as Markdown
+      </button>
+      <button className="export-option" onClick={handleCopy}>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><path d="M3 11V3h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        Copy all as text
+      </button>
+    </div>
+  );
+}
+
 export default function MainPanel() {
   const currentSessionId = useStore((s) => s.currentSessionId);
   const sessions = useStore((s) => s.sessions);
@@ -215,8 +485,11 @@ export default function MainPanel() {
   const [searchVisible, setSearchVisible] = useState(false);
   const [displayCount, setDisplayCount] = useState(100);
   const loadingMoreRef = useRef(false);
+  const [refPopoverOpen, setRefPopoverOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const sess = sessions.find((s) => s.sessionId === currentSessionId);
+  const errors = useErrorInfo(currentMessages);
 
   // Build tool inputs map: toolCallId → input args (so tool results can access original inputs)
   const toolInputsMap = useMemo(() => {
@@ -236,12 +509,16 @@ export default function MainPanel() {
     return map;
   }, [currentMessages]);
 
-  // Navigate to a child/subagent session by key or ID
+  // Navigate to a child/subagent session by key or ID (supports partial ID matching)
   const handleNavigateToSession = useCallback(
     (keyOrId: string) => {
       if (!keyOrId) return;
       const target = sessions.find(
-        (s) => s.sessionId === keyOrId || s.key === keyOrId
+        (s) =>
+          s.sessionId === keyOrId ||
+          s.key === keyOrId ||
+          s.sessionId.startsWith(keyOrId) ||
+          s.key.endsWith("/" + keyOrId.slice(0, 8))
       );
       if (target) {
         setCurrentSession(target.sessionId);
@@ -421,6 +698,56 @@ export default function MainPanel() {
             </span>
           ) : null}
           <span className="main-spacer" />
+          {/* Jump to error badge */}
+          {errors.length > 0 && (
+            <button
+              className="error-badge-btn"
+              title={`${errors.length} error${errors.length !== 1 ? "s" : ""} — click to jump`}
+              onClick={() => {
+                const idx = errors[0].index;
+                const total = currentMessages.length;
+                const needed = total - idx;
+                if (needed > displayCount) setDisplayCount(needed + 10);
+                requestAnimationFrame(() => {
+                  const container = messagesRef.current;
+                  if (!container) return;
+                  const el = container.querySelector(`[data-msg-index="${idx}"]`);
+                  if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    el.classList.add("msg-scroll-highlight");
+                    setTimeout(() => el.classList.remove("msg-scroll-highlight"), 1500);
+                  }
+                });
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 1l7 13H1L8 1z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/><path d="M8 6v3M8 11v1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+              {errors.length} error{errors.length !== 1 ? "s" : ""}
+            </button>
+          )}
+          {/* LLM Ref button */}
+          {sess?.filePath && (
+            <div style={{ position: "relative" }}>
+              <button
+                className={`toolbar-btn ${refPopoverOpen ? "active" : ""}`}
+                onClick={() => setRefPopoverOpen(!refPopoverOpen)}
+                title="Session file reference"
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M4 2h6l4 4v8H4V2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/><path d="M10 2v4h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+              </button>
+              {refPopoverOpen && <LlmRefPopover filePath={sess.filePath} onClose={() => setRefPopoverOpen(false)} />}
+            </div>
+          )}
+          {/* Export button */}
+          <div style={{ position: "relative" }}>
+            <button
+              className={`toolbar-btn ${exportOpen ? "active" : ""}`}
+              onClick={() => setExportOpen(!exportOpen)}
+              title="Export session"
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M4 8l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><path d="M2 13h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+            </button>
+            {exportOpen && <ExportDropdown messages={currentMessages} sess={sess} onClose={() => setExportOpen(false)} />}
+          </div>
           <div
             className="live-indicator"
             style={{ color: sseConnected ? "var(--green)" : "var(--red)" }}
@@ -457,6 +784,11 @@ export default function MainPanel() {
         blockColors={blockColors}
         onToggle={toggleBlockExpansion}
       />
+
+      {/* Session stats */}
+      {currentSessionId && currentMessages.length > 0 && (
+        <SessionStatsBar messages={currentMessages} sess={sess} />
+      )}
 
       {/* Search bar */}
       <MsgSearchBar visible={searchVisible} onClose={() => setSearchVisible(false)} />

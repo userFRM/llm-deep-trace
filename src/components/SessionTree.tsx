@@ -63,6 +63,15 @@ function buildTurns(messages: NormalizedMessage[]): TurnInfo[] {
   const turns: TurnInfo[] = [];
   let turnIndex = 0;
 
+  // Build a map of toolCallId → result text for extracting agentId from results
+  const toolResultMap = new Map<string, string>();
+  for (const msg of messages) {
+    if (msg.message?.role === "toolResult" && msg.message.toolCallId) {
+      const text = extractText(msg.message.content);
+      toolResultMap.set(msg.message.toolCallId, text);
+    }
+  }
+
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     if (msg.message?.role !== "user") continue;
@@ -102,12 +111,31 @@ function buildTurns(messages: NormalizedMessage[]): TurnInfo[] {
               (input.prompt as string) ||
               "subagent";
             const label = desc.slice(0, 30);
-            const agentKey =
-              (input.agentId as string) ||
-              (input.name as string) ||
-              (input.sessionId as string) ||
-              block.id ||
-              "";
+
+            // Try to extract agentId from the tool result
+            let agentKey = "";
+            const resultText = block.id ? toolResultMap.get(block.id) || "" : "";
+            // Claude Code results contain "agentId: XXXXX"
+            const agentIdMatch = resultText.match(/agentId:\s*([a-zA-Z0-9_-]+)/);
+            if (agentIdMatch) {
+              agentKey = agentIdMatch[1];
+            }
+            // For sessions_spawn, try parsing result as JSON
+            if (!agentKey && resultText) {
+              try {
+                const parsed = JSON.parse(resultText);
+                agentKey = parsed.childSessionId || parsed.childSessionKey || parsed.agentId || "";
+              } catch { /* not JSON */ }
+            }
+            // Fallback to input fields
+            if (!agentKey) {
+              agentKey =
+                (input.agentId as string) ||
+                (input.name as string) ||
+                (input.sessionId as string) ||
+                block.id ||
+                "";
+            }
             subagents.push({ label, agentKey });
           }
         }

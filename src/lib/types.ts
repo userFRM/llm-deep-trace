@@ -16,6 +16,7 @@ export interface SessionInfo {
   source?: string;
   model?: string;
   cwd?: string;
+  filePath?: string;
 }
 
 export interface BlockColors {

@@ -70,12 +70,16 @@ export default function App() {
     [setScrollTargetIndex]
   );
 
-  // Navigate to a child/subagent session by key or ID
+  // Navigate to a child/subagent session by key or ID (supports partial ID matching)
   const handleNavigateSession = useCallback(
     (keyOrId: string) => {
       if (!keyOrId) return;
       const target = sessions.find(
-        (s) => s.sessionId === keyOrId || s.key === keyOrId
+        (s) =>
+          s.sessionId === keyOrId ||
+          s.key === keyOrId ||
+          s.sessionId.startsWith(keyOrId) ||
+          s.key.endsWith("/" + keyOrId.slice(0, 8))
       );
       if (target) {
         setCurrentSession(target.sessionId);

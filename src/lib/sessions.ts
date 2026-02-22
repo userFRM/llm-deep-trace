@@ -153,6 +153,7 @@ export function listKovaSessions(): SessionInfo[] {
       isSubagent,
       compactionCount: (meta.compactionCount as number) || 0,
       source: "kova",
+      filePath: info.path,
     });
   }
 
@@ -260,6 +261,7 @@ export function listClaudeSessions(): SessionInfo[] {
         parentSessionId: parentId,
         compactionCount: 0,
         source: "claude",
+        filePath,
       });
     }
   }
@@ -352,11 +354,117 @@ export function listCodexSessions(): SessionInfo[] {
       source: "codex",
       model,
       cwd,
+      filePath,
     });
   }
 
   sessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
   return sessions;
+}
+
+export function getSessionFilePath(
+  sessionId: string,
+  source: string
+): string | null {
+  if (source === "claude") {
+    const projectsDir = path.join(HOME, ".claude", "projects");
+    if (!fs.existsSync(projectsDir)) return null;
+    function findJsonl(dir: string): string | null {
+      try {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            const found = findJsonl(fullPath);
+            if (found) return found;
+          } else if (entry.name === sessionId + ".jsonl") {
+            return fullPath;
+          }
+        }
+      } catch { /* ignore */ }
+      return null;
+    }
+    return findJsonl(projectsDir);
+  }
+  if (source === "codex") {
+    const codexDir = path.join(HOME, ".codex", "sessions");
+    if (!fs.existsSync(codexDir)) return null;
+    function findRollout(dir: string): string | null {
+      try {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            const found = findRollout(fullPath);
+            if (found) return found;
+          } else if (entry.name.startsWith("rollout-") && entry.name.endsWith(".jsonl")) {
+            const entries = parseJsonl(fullPath);
+            const meta = entries.find((e) => e.type === "session_meta");
+            const payload = (meta?.payload as Record<string, unknown>) || {};
+            if (payload.id === sessionId || path.basename(entry.name, ".jsonl") === sessionId) {
+              return fullPath;
+            }
+          }
+        }
+      } catch { /* ignore */ }
+      return null;
+    }
+    return findRollout(codexDir);
+  }
+  // kova
+  const files = findSessionFiles();
+  const info = files[sessionId];
+  return info ? info.path : null;
+}
+
+export function searchSessions(
+  query: string,
+  limit: number = 20
+): { session: SessionInfo; snippet: string }[] {
+  const q = query.toLowerCase();
+  const allSessions = [
+    ...listKovaSessions(),
+    ...listClaudeSessions(),
+    ...listCodexSessions(),
+  ];
+  const results: { session: SessionInfo; snippet: string }[] = [];
+
+  for (const session of allSessions) {
+    if (results.length >= limit) break;
+
+    // Check title/label/preview first
+    const titleMatch =
+      (session.title || "").toLowerCase().includes(q) ||
+      (session.label || "").toLowerCase().includes(q) ||
+      (session.preview || "").toLowerCase().includes(q);
+
+    if (titleMatch) {
+      const matchField = (session.title || session.label || session.preview || "");
+      const idx = matchField.toLowerCase().indexOf(q);
+      const start = Math.max(0, idx - 30);
+      const end = Math.min(matchField.length, idx + q.length + 50);
+      const snippet = (start > 0 ? "\u2026" : "") + matchField.slice(start, end) + (end < matchField.length ? "\u2026" : "");
+      results.push({ session, snippet });
+      continue;
+    }
+
+    // Search message content
+    if (!session.filePath) continue;
+    try {
+      const data = fs.readFileSync(session.filePath, "utf-8");
+      const lowerData = data.toLowerCase();
+      const idx = lowerData.indexOf(q);
+      if (idx === -1) continue;
+
+      // Extract snippet around the match
+      const start = Math.max(0, idx - 40);
+      const end = Math.min(data.length, idx + q.length + 60);
+      let snippet = data.slice(start, end).replace(/\n/g, " ").replace(/[{}"\\]/g, " ").replace(/\s+/g, " ").trim();
+      if (start > 0) snippet = "\u2026" + snippet;
+      if (end < data.length) snippet = snippet + "\u2026";
+      results.push({ session, snippet: snippet.slice(0, 120) });
+    } catch { /* ignore */ }
+  }
+
+  return results;
 }
 
 export function getSessionMessages(

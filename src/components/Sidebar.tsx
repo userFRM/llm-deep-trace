@@ -116,9 +116,9 @@ function SessionItem({
               &middot; {session.compactionCount}&times;
             </span>
           )}
-          {childCount > 0 && !isExpanded && (
-            <span className="session-msgs" style={{ color: "var(--accent)" }}>
-              {childCount} sub
+          {childCount > 0 && (
+            <span className="subagent-count-badge">
+              ({childCount} subagent{childCount !== 1 ? "s" : ""})
             </span>
           )}
         </div>
@@ -151,7 +151,11 @@ export default function Sidebar() {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const ftSearchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const dragging = useRef(false);
+  const [ftResults, setFtResults] = useState<{ session: SessionInfo; snippet: string }[]>([]);
+  const [ftLoading, setFtLoading] = useState(false);
+  const [ftActive, setFtActive] = useState(false);
 
   const handleSearchChange = useCallback(
     (value: string) => {
@@ -160,6 +164,31 @@ export default function Sidebar() {
       debounceRef.current = setTimeout(() => {
         setSearchQuery(value);
       }, 120);
+
+      // Full-text search for 3+ chars
+      if (ftSearchRef.current) clearTimeout(ftSearchRef.current);
+      if (value.length >= 3) {
+        ftSearchRef.current = setTimeout(() => {
+          setFtLoading(true);
+          setFtActive(true);
+          fetch("/api/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: value }),
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              if (Array.isArray(data)) setFtResults(data);
+              setFtLoading(false);
+            })
+            .catch(() => {
+              setFtLoading(false);
+            });
+        }, 300);
+      } else {
+        setFtResults([]);
+        setFtActive(false);
+      }
     },
     [setSearchQuery]
   );
@@ -292,7 +321,7 @@ export default function Sidebar() {
           <input
             ref={searchRef}
             type="text"
-            placeholder="Filter sessions"
+            placeholder="Search sessions (3+ chars: full-text)"
             autoComplete="off"
             spellCheck={false}
             value={localSearch}
@@ -301,7 +330,10 @@ export default function Sidebar() {
               if (e.key === "Escape") {
                 setLocalSearch("");
                 setSearchQuery("");
+                setFtResults([]);
+                setFtActive(false);
                 if (debounceRef.current) clearTimeout(debounceRef.current);
+                if (ftSearchRef.current) clearTimeout(ftSearchRef.current);
                 searchRef.current?.blur();
               }
             }}
@@ -331,6 +363,34 @@ export default function Sidebar() {
 
       {settingsOpen ? (
         <SettingsPanel />
+      ) : ftActive ? (
+        <div className="session-list scroller">
+          {ftLoading ? (
+            <div className="session-list-empty">
+              <div className="spinner" style={{ width: 12, height: 12 }} /> Searching&hellip;
+            </div>
+          ) : ftResults.length === 0 ? (
+            <div className="session-list-empty">No content matches</div>
+          ) : (
+            ftResults.map(({ session: s, snippet }) => {
+              const src = s.source || "kova";
+              return (
+                <div
+                  key={s.sessionId}
+                  className={`session-item ft-result ${currentSessionId === s.sessionId ? "selected" : ""}`}
+                  onClick={() => handleSelect(s.sessionId)}
+                >
+                  <div className="session-row">
+                    <div className={`session-dot ${s.isActive ? "active" : "inactive"}`} />
+                    <span className="session-label">{sessionLabel(s)}</span>
+                    <span className="session-source" style={{ color: sourceColors[src] || "var(--text-2)" }}>{src}</span>
+                  </div>
+                  <div className="ft-snippet">{snippet}</div>
+                </div>
+              );
+            })
+          )}
+        </div>
       ) : (
         <div className="session-list scroller">
           {filteredSessions.length === 0 ? (
@@ -342,7 +402,6 @@ export default function Sidebar() {
               if (childIds.has(s.sessionId)) return null;
               const children = childrenOf.get(s.sessionId) || [];
               const childIsSelected = children.some(c => c.sessionId === currentSessionId);
-              // Only expand if explicitly expanded or child is selected
               const isExpanded = expandedGroups.has(s.sessionId) || childIsSelected;
 
               return (
