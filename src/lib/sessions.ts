@@ -176,31 +176,50 @@ export function listClaudeSessions(): SessionInfo[] {
       projectLabel = "~/" + (idx >= 0 ? projectLabel.slice(idx + 1) : projectLabel);
     }
 
-    const jsonlFiles: string[] = [];
-    // Direct JSONL files
+    // Collect parent session files and track which have subagents
+    // Structure: <projectDir>/<uuid>.jsonl  +  <projectDir>/<uuid>/subagents/agent-XXXXX.jsonl
+    const parentSessionIds = new Set<string>();
+    const sessionFileMeta: Array<{ filePath: string; isSubagent: boolean; parentSessionId?: string }> = [];
+
     for (const f of fs.readdirSync(projectDir)) {
-      if (f.endsWith(".jsonl") && !f.endsWith(".lock") && !f.endsWith(".bak")) {
-        jsonlFiles.push(path.join(projectDir, f));
-      }
-    }
-    // Subagent JSONL files
-    const subagentsDir = path.join(projectDir, "subagents");
-    if (fs.existsSync(subagentsDir)) {
-      for (const subDir of fs.readdirSync(subagentsDir)) {
-        const subPath = path.join(subagentsDir, subDir);
-        if (fs.statSync(subPath).isDirectory()) {
-          for (const f of fs.readdirSync(subPath)) {
-            if (f.endsWith(".jsonl") && !f.endsWith(".lock") && !f.endsWith(".bak")) {
-              jsonlFiles.push(path.join(subPath, f));
-            }
-          }
-        } else if (subDir.endsWith(".jsonl") && !subDir.endsWith(".lock") && !subDir.endsWith(".bak")) {
-          jsonlFiles.push(subPath);
-        }
+      const fullPath = path.join(projectDir, f);
+      const stat = fs.statSync(fullPath);
+      if (stat.isFile() && f.endsWith(".jsonl") && !f.endsWith(".lock") && !f.endsWith(".bak")) {
+        // This is a parent session file
+        const uuid = f.replace(/\.jsonl$/, "");
+        parentSessionIds.add(uuid);
+        sessionFileMeta.push({ filePath: fullPath, isSubagent: false });
       }
     }
 
-    for (const filePath of jsonlFiles) {
+    // Now scan UUID subdirectories for subagents/
+    for (const f of fs.readdirSync(projectDir)) {
+      const fullPath = path.join(projectDir, f);
+      const stat = fs.statSync(fullPath);
+      if (!stat.isDirectory()) continue;
+      const subagentsDir = path.join(fullPath, "subagents");
+      if (!fs.existsSync(subagentsDir)) continue;
+      // f is the parent session UUID
+      const parentId = f;
+      for (const agentFile of fs.readdirSync(subagentsDir)) {
+        if (!agentFile.endsWith(".jsonl") || agentFile.endsWith(".lock") || agentFile.endsWith(".bak")) continue;
+        sessionFileMeta.push({
+          filePath: path.join(subagentsDir, agentFile),
+          isSubagent: true,
+          parentSessionId: parentId,
+        });
+      }
+    }
+
+    const jsonlFiles: string[] = []; // kept for compat — unused below
+
+    // Build set of parent UUIDs that have subagents (for hasSubagents flag)
+    const uuidsWithSubagents = new Set(
+      sessionFileMeta.filter(m => m.isSubagent).map(m => m.parentSessionId).filter(Boolean)
+    );
+
+    for (const meta of sessionFileMeta) {
+      const { filePath, isSubagent, parentSessionId: parentId } = meta;
       const entries = parseJsonl(filePath);
       let updatedAt = 0;
       try {
@@ -237,18 +256,19 @@ export function listClaudeSessions(): SessionInfo[] {
         if (e.type === "user" || e.type === "assistant") msgCount++;
       }
 
-      const isSubagent = filePath.includes("subagents");
-      // Subagent files live at <project>/subagents/<parentSessionId>/<subagent>.jsonl
-      const parentId = isSubagent ? path.basename(path.dirname(filePath)) : undefined;
       const sessionId = path.basename(filePath, ".jsonl");
+      // For subagents: key is "agent-XXXXX" (short filename without extension)
+      // For parents: key is the project label
+      const sessionKey = isSubagent
+        ? sessionId  // e.g. "agent-ac025c7"
+        : projectLabel;
+      const hasSubagents = !isSubagent && uuidsWithSubagents.has(sessionId);
 
       sessions.push({
         sessionId,
-        key:
-          projectLabel +
-          (isSubagent ? "/" + sessionId.slice(0, 8) : ""),
+        key: sessionKey,
         label: isSubagent
-          ? "\u21b3 subagent " + sessionId.slice(0, 8)
+          ? "\u21b3 " + sessionId  // e.g. "↳ agent-ac025c7"
           : projectLabel,
         lastUpdated: updatedAt,
         channel: "claude-code",
@@ -259,6 +279,7 @@ export function listClaudeSessions(): SessionInfo[] {
         isDeleted: false,
         isSubagent,
         parentSessionId: parentId,
+        hasSubagents,
         compactionCount: 0,
         source: "claude",
         filePath,

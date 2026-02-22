@@ -12,6 +12,7 @@ export interface SessionInfo {
   isDeleted: boolean;
   isSubagent: boolean;
   parentSessionId?: string;
+  hasSubagents?: boolean;
   compactionCount: number;
   source?: string;
   model?: string;

@@ -229,16 +229,19 @@ export default function Sidebar() {
     }
   }
 
-  // hasSubagents: true if any session in the FULL list has this session as parent
+  // hasSubagents: use the direct flag from scanner OR derive from parentSessionId links
   const hasSubagentsSet = new Set<string>();
   for (const s of sessions) {
+    // Direct flag set by scanner (most reliable)
+    if (s.hasSubagents) {
+      hasSubagentsSet.add(s.sessionId);
+    }
+    // Derive from parentSessionId: if s has a parent, the parent has subagents
     const pid = s.parentSessionId;
     if (pid) {
       hasSubagentsSet.add(pid);
-      // Also check if pid matches a session's key
       for (const p of sessions) {
-        if (p.key === pid) hasSubagentsSet.add(p.sessionId);
-        if (p.sessionId === pid) hasSubagentsSet.add(p.sessionId);
+        if (p.key === pid || p.sessionId === pid) hasSubagentsSet.add(p.sessionId);
       }
     }
     // Kova subagent key pattern

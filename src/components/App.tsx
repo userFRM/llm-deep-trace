@@ -79,7 +79,9 @@ export default function App() {
           s.sessionId === keyOrId ||
           s.key === keyOrId ||
           s.sessionId.startsWith(keyOrId) ||
-          s.key.endsWith("/" + keyOrId.slice(0, 8))
+          s.sessionId.includes(keyOrId) ||  // handles "ac025c7" matching "agent-ac025c7"
+          s.key.endsWith("/" + keyOrId.slice(0, 8)) ||
+          ("agent-" + keyOrId) === s.sessionId  // "ac025c7" → "agent-ac025c7"
       );
       if (target) {
         setCurrentSession(target.sessionId);
