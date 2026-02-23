@@ -21,8 +21,8 @@ It runs entirely on your machine. It reads your local files. That's it.
 | Agent | Sessions | Subagents | Notes |
 |---|---|---|---|
 | **Claude Code** (Anthropic) | ✓ | ✓ | Full support incl. agent teams |
-| **Codex** (OpenAI) | ✓ | — | |
-| **Kimi** (Moonshot AI) | ✓ | — | Think-block rendering |
+| **Codex** | ✓ | — | |
+| **Kimi** | ✓ | — | Think-block rendering |
 | **Gemini CLI** (Google) | ✓ | — | |
 | **OpenClaw** | ✓ | ✓ | |
 | **Cursor** | ✓ | — | Partial — some metadata missing |
