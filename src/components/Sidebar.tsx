@@ -638,6 +638,17 @@ export default function Sidebar() {
           <GearIcon />
           <span>settings</span>
         </button>
+        <button
+          className="sidebar-settings-btn"
+          onClick={() => { window.location.href = "/?setup=1"; }}
+          title="Configure agent paths"
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M8 5v3l2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span>agents</span>
+        </button>
       </div>
 
       {/* Drag handle */}
