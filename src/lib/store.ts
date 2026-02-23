@@ -414,7 +414,15 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setSidebarTab: (tab) => {
-    set({ sidebarTab: tab });
+    const { currentSessionId, archivedSessionIds } = get();
+    // Clear the panel when switching tabs if the active session doesn't belong there
+    let clearSession = false;
+    if (tab === "archived" && currentSessionId && !archivedSessionIds.has(currentSessionId)) {
+      clearSession = true;
+    } else if (tab === "browse" && currentSessionId && archivedSessionIds.has(currentSessionId)) {
+      clearSession = true;
+    }
+    set({ sidebarTab: tab, ...(clearSession ? { currentSessionId: null, currentMessages: [], rawEntries: [] } : {}) });
     get().applyFilter();
   },
 
