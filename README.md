@@ -122,7 +122,7 @@ PRs welcome on any of these.
 
 Being straight with you:
 
-- **Read-only.** Browse and analyze — you can't resume or fork sessions from here yet.
+- **Read-only.** Browse and analyze — you can't resume or fork sessions from here yet. jazzyalex/agent-sessions does this for Codex and Claude Code.
 - **Local files only.** Reads `~/.claude/`, `~/.kimi/`, etc. on the machine it runs on. Remote sessions not supported.
 - **Cursor / Aider / Continue** support is partial. Session formats vary and some metadata is missing.
 - **No mobile UI.** Built for desktop browsers.
@@ -132,15 +132,19 @@ Being straight with you:
 
 ## vs alternatives
 
-[**jazzyalex/agent-sessions**](https://github.com/jazzyalex/agent-sessions) — native macOS Swift app, well-made, focused on Claude Code. If you want a native Mac experience, check it out.
+[**jazzyalex/agent-sessions**](https://github.com/jazzyalex/agent-sessions) — the closest thing. Native macOS Swift app (macOS 14+), v2.11.2, actively maintained. Supports 7 agents: Codex, Claude Code, Gemini, Copilot, Factory Droid, OpenCode, OpenClaw. Has unified search, analytics, rate limits tracker, image browser, Homebrew install, and — notably — **session resume** (reopen a session directly in your terminal). If you're on a Mac and want a native app, it's worth looking at.
 
-What's different here:
-- Cross-platform (Mac, Linux, Windows — anywhere Node.js runs)
-- 11 agent providers vs primarily Claude Code
-- Subagent tree visualization for agent teams
-- Full analytics dashboard
-- Conversation map (React Flow)
-- Actively developed
+Where llm-deep-trace is different:
+- **Cross-platform** — runs on Mac, Linux, Windows; anything with Node.js. Not macOS-only.
+- **More agents** — 11 vs 7 (adds Kimi, Aider, Continue.dev, Cursor)
+- **Subagent tree** — React Flow visualization of parent → child agent relationships
+- **Conversation map** — full session graph, click-to-navigate
+- **Web-based** — no install, no signing, no notarization; just `npm run dev`
+
+What they have that we don't (yet):
+- Session resume (reopen past sessions in the terminal)
+- Real-time rate limits tracker
+- Native performance + Homebrew cask + auto-updates
 
 ---
 
