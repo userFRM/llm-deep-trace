@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { useStore, BlockCategory } from "@/lib/store";
+import { useStore, BlockCategory, PinnedBlock } from "@/lib/store";
 import { BlockColors, NormalizedMessage, SessionInfo } from "@/lib/types";
 import { sessionLabel, relativeTime, channelIcon, copyToClipboard, extractText, extractResultText } from "@/lib/client-utils";
 import MessageRenderer from "./MessageRenderer";
@@ -247,15 +247,26 @@ function BlockToggleToolbar({
   );
 }
 
-// ── Pinned Messages Strip ──
-function PinnedStrip({ pinnedIndices, messages, onUnpin, onScrollTo }: {
-  pinnedIndices: number[];
-  messages: NormalizedMessage[];
-  onUnpin: (idx: number) => void;
-  onScrollTo: (idx: number) => void;
+// ── Pinned Blocks Strip ──
+const BLOCK_TYPE_COLORS: Record<string, string> = {
+  thinking: "#71717A",
+  exec: "#22C55E",
+  file: "#3B82F6",
+  web: "#8B5CF6",
+  browser: "#06B6D4",
+  msg: "#F59E0B",
+  agent: "#9B72EF",
+  "user-msg": "#9B72EF",
+  "asst-text": "#E8E8F0",
+};
+
+function PinnedStrip({ blocks, onUnpin, onScrollTo }: {
+  blocks: PinnedBlock[];
+  onUnpin: (blockId: string) => void;
+  onScrollTo: (msgIndex: number) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const sorted = [...pinnedIndices].sort((a, b) => a - b);
+  const sorted = [...blocks].sort((a, b) => a.msgIndex - b.msgIndex);
   return (
     <div className="pinned-strip">
       <div className="pinned-strip-header" onClick={() => setOpen(!open)}>
@@ -269,24 +280,13 @@ function PinnedStrip({ pinnedIndices, messages, onUnpin, onScrollTo }: {
       </div>
       {open && (
         <div className="pinned-strip-items">
-          {sorted.map((idx) => {
-            const msg = messages[idx];
-            const preview = (() => {
-              if (!msg) return `message ${idx}`;
-              const role = msg.message?.role || msg.type || "";
-              const content = msg.message?.content;
-              if (typeof content === "string") return content.slice(0, 80);
-              if (Array.isArray(content)) {
-                for (const b of content as unknown as Record<string, unknown>[]) {
-                  if (b.type === "text" && typeof b.text === "string") return b.text.slice(0, 80);
-                }
-              }
-              return `${role} message`;
-            })();
+          {sorted.map((block) => {
+            const color = BLOCK_TYPE_COLORS[block.blockType] || "#888";
             return (
-              <div key={idx} className="pinned-strip-item" onClick={() => onScrollTo(idx)}>
-                <span className="pinned-preview">{preview}</span>
-                <button className="pinned-unpin" title="Unpin" onClick={(e) => { e.stopPropagation(); onUnpin(idx); }}>×</button>
+              <div key={block.blockId} className="pinned-strip-item" onClick={() => onScrollTo(block.msgIndex)}>
+                <span className="pinned-block-badge" style={{ background: color }} title={block.blockType}/>
+                <span className="pinned-preview">{block.preview || block.blockType}</span>
+                <button className="pinned-unpin" title="Unpin" onClick={(e) => { e.stopPropagation(); onUnpin(block.blockId); }}>×</button>
               </div>
             );
           })}
@@ -734,8 +734,21 @@ export default function MainPanel() {
   const activeSessions = useStore((s) => s.activeSessions);
   const hiddenBlockTypes = useStore((s) => s.hiddenBlockTypes);
   const toggleHiddenBlockType = useStore((s) => s.toggleHiddenBlockType);
-  const pinnedMessages = useStore((s) => s.pinnedMessages);
-  const togglePinMessage = useStore((s) => s.togglePinMessage);
+  const pinnedBlocks = useStore((s) => s.pinnedBlocks);
+  const togglePinBlock = useStore((s) => s.togglePinBlock);
+
+  const pinnedBlockIds = useMemo(
+    () => new Set((currentSessionId ? (pinnedBlocks[currentSessionId] || []) : []).map(b => b.blockId)),
+    [pinnedBlocks, currentSessionId]
+  );
+
+  const handlePinBlock = useCallback((blockId: string, blockType: string, preview: string) => {
+    if (!currentSessionId) return;
+    // Find msg index from blockId (format: "type-msgIndex-blockIndex" or "type-msgIndex")
+    const parts = blockId.split("-");
+    const msgIndex = parseInt(parts[1] ?? "0", 10) || 0;
+    togglePinBlock(currentSessionId, { blockId, msgIndex, blockType, preview });
+  }, [currentSessionId, togglePinBlock]);
 
   const messagesRef = useRef<HTMLDivElement>(null);
   const [searchVisible, setSearchVisible] = useState(false);
@@ -1058,12 +1071,14 @@ export default function MainPanel() {
       {/* Search bar */}
       <MsgSearchBar visible={searchVisible} onClose={() => setSearchVisible(false)} />
 
-      {/* Pinned messages strip */}
-      {currentSessionId && (pinnedMessages[currentSessionId]?.length ?? 0) > 0 && (
+      {/* Pinned blocks strip */}
+      {currentSessionId && (pinnedBlocks[currentSessionId]?.length ?? 0) > 0 && (
         <PinnedStrip
-          pinnedIndices={pinnedMessages[currentSessionId]}
-          messages={currentMessages}
-          onUnpin={(idx) => togglePinMessage(currentSessionId, idx)}
+          blocks={pinnedBlocks[currentSessionId]}
+          onUnpin={(blockId) => {
+            const block = (pinnedBlocks[currentSessionId] || []).find(b => b.blockId === blockId);
+            if (block) togglePinBlock(currentSessionId, block);
+          }}
           onScrollTo={(idx) => {
             const total = currentMessages.length;
             const needed = total - idx;
@@ -1093,20 +1108,8 @@ export default function MainPanel() {
           ) : (
             visible.map((entry, i) => {
               const absIdx = startIdx + i;
-              const pinned = currentSessionId ? (pinnedMessages[currentSessionId] || []).includes(absIdx) : false;
               return (
-                <div key={absIdx} data-msg-index={absIdx} className={`msg-wrap ${pinned ? "msg-pinned" : ""}`}>
-                  <button
-                    className={`pin-btn ${pinned ? "active" : ""}`}
-                    title={pinned ? "Unpin message" : "Pin message"}
-                    onClick={() => currentSessionId && togglePinMessage(currentSessionId, absIdx)}
-                  >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-                      <path d="M5 17H19V13L17 5H7L5 13V17Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill={pinned ? "currentColor" : "none"}/>
-                      <line x1="5" y1="9" x2="19" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                      <line x1="12" y1="17" x2="12" y2="22" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                    </svg>
-                  </button>
+                <div key={absIdx} data-msg-index={absIdx} className="msg-wrap">
                   <MessageRenderer
                     entry={entry}
                     allThinkingExpanded={allThinkingExpanded}
@@ -1115,6 +1118,9 @@ export default function MainPanel() {
                     settings={appSettings}
                     toolInputsMap={toolInputsMap}
                     onNavigateSession={handleNavigateToSession}
+                    msgIndex={absIdx}
+                    pinnedBlockIds={pinnedBlockIds}
+                    onPinBlock={handlePinBlock}
                     hiddenBlockTypes={hiddenBlockTypes}
                   />
                 </div>

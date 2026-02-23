@@ -255,7 +255,7 @@ export default function Sidebar() {
   const archivedSessionIds = useStore((s) => s.archivedSessionIds);
   const starredSessionIds = useStore((s) => s.starredSessionIds);
   const toggleStarred = useStore((s) => s.toggleStarred);
-  const pinnedMessages = useStore((s) => s.pinnedMessages);
+  const pinnedBlocks = useStore((s) => s.pinnedBlocks);
   const setSearchQuery = useStore((s) => s.setSearchQuery);
   const toggleSourceFilter = useStore((s) => s.toggleSourceFilter);
   const toggleGroupExpanded = useStore((s) => s.toggleGroupExpanded);
@@ -507,16 +507,16 @@ export default function Sidebar() {
             onClick={() => setSidebarTab("browse")}
           >browse</button>
           <button
-            className={`sidebar-tab ${sidebarTab === "starred" ? "active" : ""}`}
-            onClick={() => setSidebarTab("starred")}
+            className={`sidebar-tab ${sidebarTab === "favourites" ? "active" : ""}`}
+            onClick={() => setSidebarTab("favourites")}
           >
             <svg width="9" height="9" viewBox="0 0 16 16" fill="none" style={{ marginRight: 3, verticalAlign: -1 }}>
               <path d="M8 1l1.8 3.6 4 .6-2.9 2.8.7 4L8 10l-3.6 1.9.7-4L2.2 5.2l4-.6z"
-                fill={sidebarTab === "starred" ? "#F59E0B" : "none"}
-                stroke={sidebarTab === "starred" ? "#F59E0B" : "currentColor"}
+                fill={sidebarTab === "favourites" ? "#F59E0B" : "none"}
+                stroke={sidebarTab === "favourites" ? "#F59E0B" : "currentColor"}
                 strokeWidth="1.2" strokeLinejoin="round"/>
             </svg>
-            starred
+            favourites
             {starredSessionIds.size > 0 && (
               <span className="sidebar-tab-count">{starredSessionIds.size}</span>
             )}
@@ -534,8 +534,8 @@ export default function Sidebar() {
               <line x1="12" y1="17" x2="12" y2="22" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
             </svg>
             pinned
-            {Object.values(pinnedMessages).filter(v => v.length > 0).length > 0 && (
-              <span className="sidebar-tab-count">{Object.values(pinnedMessages).filter(v => v.length > 0).length}</span>
+            {Object.values(pinnedBlocks).filter(v => v.length > 0).length > 0 && (
+              <span className="sidebar-tab-count">{Object.values(pinnedBlocks).filter(v => v.length > 0).length}</span>
             )}
           </button>
           <button
@@ -588,14 +588,14 @@ export default function Sidebar() {
         <div className="session-list scroller">
           {filteredSessions.length === 0 ? (
             <div className="session-list-empty">
-              {searchQuery ? "No matches" : sidebarTab === "archived" ? "No archived sessions" : sidebarTab === "starred" ? "No starred sessions" : sidebarTab === "pinned" ? "No sessions with pins" : "No sessions"}
+              {searchQuery ? "No matches" : sidebarTab === "archived" ? "No archived sessions" : sidebarTab === "favourites" ? "No favourite sessions" : sidebarTab === "pinned" ? "No sessions with pinned blocks" : "No sessions"}
             </div>
           ) : (
             filteredSessions.map((s) => {
               if (childIds.has(s.sessionId)) return null;
               // Tab-specific filters
-              if (sidebarTab === "starred" && !starredSessionIds.has(s.sessionId)) return null;
-              if (sidebarTab === "pinned" && !(pinnedMessages[s.sessionId]?.length > 0)) return null;
+              if (sidebarTab === "favourites" && !starredSessionIds.has(s.sessionId)) return null;
+              if (sidebarTab === "pinned" && !(pinnedBlocks[s.sessionId]?.length > 0)) return null;
               const children = childrenOf.get(s.sessionId) || [];
               const isExpanded = expandedGroups.has(s.sessionId);
               const isLive = activeSessions.has(s.sessionId);
