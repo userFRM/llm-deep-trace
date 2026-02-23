@@ -60,45 +60,75 @@ You can alternate between the two freely. The sync is real but indirect: both in
 
 ## How it would work technically
 
-Each supported CLI has a way to resume a session non-interactively:
+### Why spawn-and-wait doesn't work
 
-| Agent | Resume mechanism |
+The obvious first approach — spawning `claude --resume <id> --print "<message>"` per message — turns out to be wrong for real workflows.
+
+`--print` is a scripting mode. It's single-shot, it doesn't carry flags like `--dangerously-skip-permissions`, and it behaves differently from an interactive session for multi-step tool call chains. Anyone who runs Claude Code with custom flags would find it broken.
+
+### The correct model: persistent process + stdin pipe
+
+The right architecture keeps the CLI process alive between messages and writes new messages to its stdin:
+
+```
+UI sends message
+    ↓
+server writes to process stdin
+    ↓
+CLI runs normally — all flags, all behavior intact
+    ↓
+JSONL written as usual
+    ↓
+live tail picks it up → renders in both UI and terminal
+```
+
+When you start an interactive session in the UI, you configure the spawn command:
+
+```
+claude --dangerously-skip-permissions
+claude --resume <previous-id> --dangerously-skip-permissions
+codex --session <id>
+```
+
+The process stays alive until you explicitly close it or it finishes. If the server restarts, the session ends (we'd surface this clearly rather than silently losing messages).
+
+This is effectively a thin stdin pipe with a structured renderer on top. The CLI runs exactly as it would in your terminal.
+
+### Process lifecycle
+
+| Event | Behaviour |
 |---|---|
-| Claude Code | `claude --resume <session-id> --print "<message>"` |
-| Codex | `codex --session <session-id> "<message>"` |
-| Kimi | Similar flag (TBD) |
-| Gemini CLI | Checkpoint/resume API (TBD) |
+| User opens interactive mode | Spawn CLI process, keep stdin open |
+| User sends message | Write to stdin, wait for JSONL activity to settle |
+| CLI finishes responding | UI unlocks for next message |
+| User closes session / navigates away | Graceful SIGTERM to CLI process |
+| Server restart | Session ends; user must re-open |
 
-When you send a message from the UI:
-
-1. `POST /api/sessions/[sessionKey]/send` receives the message
-2. The server spawns the appropriate CLI with `--resume` and the message
-3. The CLI writes its response to the same JSONL session file
-4. The existing SSE live-tail picks it up and renders it in real time — in the web UI and in any terminal watching the file
-5. No new streaming infrastructure needed — just the CLI doing what it already does
-
-Process model: spawn-and-wait per message (simple, ~1s overhead per turn) or keep-alive stdin pipe (faster, more complex). We'd start with spawn-and-wait.
+One process per session, no concurrent sends — enforced by the UI lock while the CLI is active.
 
 ---
 
 ## What we're unsure about
 
-- **Is the web UI actually better than the terminal for continuation?** The CLI is fast and familiar. The overhead of opening a browser might not be worth it for developers who live in the terminal.
-- **Multi-user safety.** If two people send messages to the same session concurrently, the agent gets confused. We'd need basic locking or a queue.
-- **Auth.** Right now LLM Deep Trace has no auth. Interactive mode changes the risk profile — someone sending messages to your agent is different from someone reading your session history.
-- **Codex and Kimi flags.** We've validated Claude Code's `--resume --print` mode. The others need verification.
+- **Is the web UI actually better than the terminal for continuation?** The CLI is fast and familiar. The overhead of opening a browser might not be worth it for developers who live in the terminal. The answer is probably "yes, for remote access and mobile" and "no, if you're already at your machine."
+- **Process reconnection.** If your browser tab closes mid-session, the CLI process keeps running on the server. We need a clean way to re-attach to it — or to surface that it's still active when you reopen the session.
+- **Auth.** Right now LLM Deep Trace has no auth. Interactive mode changes the risk profile significantly — someone sending messages to your agent with `--dangerously-skip-permissions` is a different threat model from someone reading session history. This needs to be solved before any networked deployment.
+- **Spawn command configuration.** Users need to specify their own flags. This implies a per-agent config (or per-session config) that stores the spawn command. Where does that live? How is it edited?
+- **Detecting when the CLI is "done" responding.** With the JSONL live tail we watch for new writes, but knowing when the agent has truly finished (vs. mid-tool-call pause) requires either a timeout heuristic or a sentinel in the JSONL format.
 
 ---
 
 ## What we'd build first (MVP scope)
 
-- A chat input bar at the bottom of the session panel (only visible for supported agents)
-- Single-turn send: type → send → response appears via live tail
-- Session lock while waiting (no overlapping sends)
-- Visual indicator that a session is in "interactive mode"
+- Configurable spawn command per agent (stored in local config)
+- A "start session" button that spawns the CLI process and keeps it alive
+- A chat input bar at the bottom of the session panel
+- Write-to-stdin on send, UI lock while the CLI is responding
+- Visual indicator: session is active / responding / idle
+- Graceful close when done
 - Claude Code only, to start
 
-Later: multi-agent support, keep-alive process mode, streamed tokens, team access controls.
+Later: process re-attach after tab close, multi-agent support, auth layer, mobile-optimised input.
 
 ---
 
