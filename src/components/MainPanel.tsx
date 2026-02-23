@@ -158,6 +158,8 @@ const BLOCK_PILLS: { category: BlockCategory; label: string }[] = [
   { category: "agent", label: "tasks" },
 ];
 
+// Three states per block type: "collapsed" | "expanded" | "hidden"
+// Click cycles: collapsed → expanded → hidden → collapsed
 function BlockToggleToolbar({
   blockExpansion,
   blockColors,
@@ -171,51 +173,57 @@ function BlockToggleToolbar({
   hiddenBlockTypes: Set<BlockCategory>;
   onToggleHidden: (category: BlockCategory) => void;
 }) {
+  const handleCycle = (category: BlockCategory) => {
+    const hidden = hiddenBlockTypes.has(category);
+    const expanded = blockExpansion[category];
+    if (hidden) {
+      // hidden → collapsed (make visible, ensure collapsed)
+      onToggleHidden(category);
+      if (expanded) onToggle(category); // force collapsed
+    } else if (!expanded) {
+      // collapsed → expanded
+      onToggle(category);
+    } else {
+      // expanded → hidden
+      onToggle(category); // collapse first
+      onToggleHidden(category); // then hide
+    }
+  };
+
   return (
     <div className="block-toggle-strip">
-      {/* expand/collapse row */}
+      <span className="block-strip-label">blocks</span>
       {BLOCK_PILLS.map(({ category, label }) => {
-        const active = blockExpansion[category];
+        const hidden = hiddenBlockTypes.has(category);
+        const expanded = !hidden && blockExpansion[category];
         const color = blockColors[category] || "#888899";
+        // state: "hidden" | "collapsed" | "expanded"
+        const state = hidden ? "hidden" : expanded ? "expanded" : "collapsed";
+        const titles = {
+          collapsed: `${label} — visible, collapsed. Click to expand.`,
+          expanded:  `${label} — visible, expanded. Click to hide.`,
+          hidden:    `${label} — hidden. Click to show.`,
+        };
         return (
           <button
             key={category}
-            className={`block-pill ${active ? "active" : ""}`}
+            className={`block-pill block-pill-tri state-${state}`}
             style={
-              active
+              state === "expanded"
                 ? { background: color, borderColor: color, color: "#fff" }
-                : { borderColor: color, color }
+                : state === "collapsed"
+                ? { borderColor: color, color }
+                : { borderColor: "var(--border)", color: "var(--text-3)" }
             }
-            onClick={() => onToggle(category)}
+            title={titles[state]}
+            onClick={() => handleCycle(category)}
           >
-            {label}
-          </button>
-        );
-      })}
-      {/* visibility filter row */}
-      <span className="block-pill-sep" />
-      {BLOCK_PILLS.map(({ category, label }) => {
-        const hidden = hiddenBlockTypes.has(category);
-        const color = blockColors[category] || "#888899";
-        return (
-          <button
-            key={`vis-${category}`}
-            className={`block-pill block-pill-vis ${hidden ? "hidden" : "visible"}`}
-            style={hidden
-              ? { borderColor: color, color: "var(--text-3)", opacity: 0.4 }
-              : { borderColor: color, color }
-            }
-            title={hidden ? `Show ${label} blocks` : `Hide ${label} blocks`}
-            onClick={() => onToggleHidden(category as BlockCategory)}
-          >
-            {/* eye icon */}
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style={{ marginRight: 3 }}>
-              {hidden
-                ? <><path d="M2 2l12 12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M6.5 3.5C7 3.2 7.5 3 8 3c4 0 6 5 6 5s-.7 1.4-2 2.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none"/><path d="M4.2 4.7C2.8 6.1 2 8 2 8s2 5 6 5c1.4 0 2.6-.5 3.5-1.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none"/></>
-                : <><ellipse cx="8" cy="8" rx="6" ry="3.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="8" cy="8" r="2" fill="currentColor"/></>
-              }
-            </svg>
-            {label}
+            {state === "hidden" && (
+              <svg width="9" height="9" viewBox="0 0 16 16" fill="none" style={{ marginRight: 3, opacity: 0.5 }}>
+                <path d="M2 2l12 12M6.5 3.5C7 3.2 7.5 3 8 3c4 0 6 5 6 5s-.7 1.4-2 2.8M4.2 4.7C2.8 6.1 2 8 2 8s2 5 6 5c1.4 0 2.6-.5 3.5-1.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+            )}
+            <span style={state === "hidden" ? { opacity: 0.45 } : undefined}>{label}</span>
           </button>
         );
       })}
