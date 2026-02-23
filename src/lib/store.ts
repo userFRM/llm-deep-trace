@@ -31,7 +31,7 @@ interface AppState {
   settings: AppSettings;
   scrollTargetIndex: number | null;
   archivedSessionIds: Set<string>;
-  sidebarTab: "browse" | "archived" | "analytics";
+  sidebarTab: "browse" | "starred" | "pinned" | "archived" | "analytics";
   activeSessions: Set<string>;
   hiddenBlockTypes: Set<BlockCategory>;
   starredSessionIds: Set<string>;
@@ -61,7 +61,7 @@ interface AppState {
   setScrollTargetIndex: (idx: number | null) => void;
   archiveSession: (sessionId: string) => void;
   unarchiveSession: (sessionId: string) => void;
-  setSidebarTab: (tab: "browse" | "archived" | "analytics") => void;
+  setSidebarTab: (tab: "browse" | "starred" | "pinned" | "archived" | "analytics") => void;
   setActiveSessions: (ids: Set<string>) => void;
   toggleHiddenBlockType: (cat: BlockCategory) => void;
   toggleStarred: (sessionId: string) => void;
@@ -466,6 +466,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (next.has(sessionId)) next.delete(sessionId); else next.add(sessionId);
     set({ starredSessionIds: next });
     saveStarred(next);
+    get().applyFilter();
   },
   togglePinMessage: (sessionId, msgIndex) => {
     const current = get().pinnedMessages;
@@ -475,6 +476,7 @@ export const useStore = create<AppState>((set, get) => ({
     const next = { ...current, [sessionId]: arr };
     set({ pinnedMessages: next });
     savePinnedMessages(next);
+    get().applyFilter();
   },
 
   initFromLocalStorage: () => {
@@ -492,27 +494,23 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   applyFilter: () => {
-    const { sessions, searchQuery, sourceFilters, archivedSessionIds, sidebarTab } = get();
+    const { sessions, searchQuery, sourceFilters, archivedSessionIds, sidebarTab, starredSessionIds, pinnedMessages } = get();
     const q = searchQuery.toLowerCase().trim();
-    const isArchiveTab = sidebarTab === "archived";
     const filtered = sessions.filter((s) => {
       const src = s.source || "kova";
       if (sourceFilters[src] === false) return false;
-      // Archive filtering
       const isArchived = archivedSessionIds.has(s.sessionId);
-      if (isArchiveTab && !isArchived) return false;
-      if (!isArchiveTab && isArchived) return false;
+      // Tab-specific visibility rules
+      if (sidebarTab === "archived") { if (!isArchived) return false; }
+      else if (sidebarTab === "starred") { if (!starredSessionIds.has(s.sessionId)) return false; }
+      else if (sidebarTab === "pinned") { if (!(pinnedMessages[s.sessionId]?.length > 0)) return false; }
+      else { if (isArchived) return false; } // browse
       if (!q) return true;
       const label = (s.label || s.title || s.key || "").toLowerCase();
       const preview = (s.preview || "").toLowerCase();
       const key = (s.key || "").toLowerCase();
       const id = (s.sessionId || "").toLowerCase();
-      return (
-        label.includes(q) ||
-        preview.includes(q) ||
-        key.includes(q) ||
-        id.includes(q)
-      );
+      return label.includes(q) || preview.includes(q) || key.includes(q) || id.includes(q);
     });
     const grouped = q ? filtered : buildGroupedSessions(filtered);
     set({ filteredSessions: grouped });

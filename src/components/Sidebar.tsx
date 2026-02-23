@@ -255,6 +255,7 @@ export default function Sidebar() {
   const archivedSessionIds = useStore((s) => s.archivedSessionIds);
   const starredSessionIds = useStore((s) => s.starredSessionIds);
   const toggleStarred = useStore((s) => s.toggleStarred);
+  const pinnedMessages = useStore((s) => s.pinnedMessages);
   const setSearchQuery = useStore((s) => s.setSearchQuery);
   const toggleSourceFilter = useStore((s) => s.toggleSourceFilter);
   const toggleGroupExpanded = useStore((s) => s.toggleGroupExpanded);
@@ -499,13 +500,43 @@ export default function Sidebar() {
           ))}
         </div>
 
-        {/* Browse / Archived / Analytics tabs */}
+        {/* Browse / Starred / Pinned / Archived / Analytics tabs */}
         <div className="sidebar-tabs">
           <button
             className={`sidebar-tab ${sidebarTab === "browse" ? "active" : ""}`}
             onClick={() => setSidebarTab("browse")}
+          >browse</button>
+          <button
+            className={`sidebar-tab ${sidebarTab === "starred" ? "active" : ""}`}
+            onClick={() => setSidebarTab("starred")}
           >
-            browse
+            <svg width="9" height="9" viewBox="0 0 16 16" fill="none" style={{ marginRight: 3, verticalAlign: -1 }}>
+              <path d="M8 1l1.8 3.6 4 .6-2.9 2.8.7 4L8 10l-3.6 1.9.7-4L2.2 5.2l4-.6z"
+                fill={sidebarTab === "starred" ? "#F59E0B" : "none"}
+                stroke={sidebarTab === "starred" ? "#F59E0B" : "currentColor"}
+                strokeWidth="1.2" strokeLinejoin="round"/>
+            </svg>
+            starred
+            {starredSessionIds.size > 0 && (
+              <span className="sidebar-tab-count">{starredSessionIds.size}</span>
+            )}
+          </button>
+          <button
+            className={`sidebar-tab ${sidebarTab === "pinned" ? "active" : ""}`}
+            onClick={() => setSidebarTab("pinned")}
+          >
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" style={{ marginRight: 3, verticalAlign: -1 }}>
+              <path d="M5 17H19V13L17 5H7L5 13V17Z"
+                fill={sidebarTab === "pinned" ? "#9B72EF" : "none"}
+                stroke={sidebarTab === "pinned" ? "#9B72EF" : "currentColor"}
+                strokeWidth="1.4" strokeLinejoin="round"/>
+              <line x1="5" y1="9" x2="19" y2="9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+              <line x1="12" y1="17" x2="12" y2="22" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+            pinned
+            {Object.values(pinnedMessages).filter(v => v.length > 0).length > 0 && (
+              <span className="sidebar-tab-count">{Object.values(pinnedMessages).filter(v => v.length > 0).length}</span>
+            )}
           </button>
           <button
             className={`sidebar-tab ${sidebarTab === "archived" ? "active" : ""}`}
@@ -519,9 +550,7 @@ export default function Sidebar() {
           <button
             className={`sidebar-tab ${sidebarTab === "analytics" ? "active" : ""}`}
             onClick={() => setSidebarTab("analytics")}
-          >
-            analytics
-          </button>
+          >analytics</button>
         </div>
       </div>
 
@@ -559,11 +588,14 @@ export default function Sidebar() {
         <div className="session-list scroller">
           {filteredSessions.length === 0 ? (
             <div className="session-list-empty">
-              {searchQuery ? "No matches" : sidebarTab === "archived" ? "No archived sessions" : "No sessions"}
+              {searchQuery ? "No matches" : sidebarTab === "archived" ? "No archived sessions" : sidebarTab === "starred" ? "No starred sessions" : sidebarTab === "pinned" ? "No sessions with pins" : "No sessions"}
             </div>
           ) : (
             filteredSessions.map((s) => {
               if (childIds.has(s.sessionId)) return null;
+              // Tab-specific filters
+              if (sidebarTab === "starred" && !starredSessionIds.has(s.sessionId)) return null;
+              if (sidebarTab === "pinned" && !(pinnedMessages[s.sessionId]?.length > 0)) return null;
               const children = childrenOf.get(s.sessionId) || [];
               const isExpanded = expandedGroups.has(s.sessionId);
               const isLive = activeSessions.has(s.sessionId);

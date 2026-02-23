@@ -2442,16 +2442,17 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
 /* ── Sidebar Tabs ────────────────── */
 
 .sidebar-tabs {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 2px;
   margin-top: 8px;
 }
 
 .sidebar-tab {
   flex: 1;
-  padding: 4px 8px;
+  padding: 3px 4px;
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   background: transparent;
   border: 1px solid var(--border);
@@ -2462,7 +2463,8 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 3px;
+  white-space: nowrap;
 }
 
 .sidebar-tab:hover {
@@ -3487,4 +3489,30 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   padding: 3px 10px 2px;
   border-top: 1px solid var(--border);
   margin-top: 2px;
+}
+
+/* ── panel-icon-btn (generic icon button in panel header) ─ */
+.panel-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all 0.12s;
+  flex-shrink: 0;
+}
+.panel-icon-btn:hover {
+  border-color: var(--accent-border);
+  color: var(--text-2);
+  background: var(--raised);
+}
+.panel-icon-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
 }

@@ -259,8 +259,10 @@ function PinnedStrip({ pinnedIndices, messages, onUnpin, onScrollTo }: {
   return (
     <div className="pinned-strip">
       <div className="pinned-strip-header" onClick={() => setOpen(!open)}>
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style={{ marginRight: 5 }}>
-          <path d="M10 2l4 4-2 2-1.5-.5L8 10l.5 4-2-2-3 3-2-2 3-3-2-2 4 .5 2.5-2.5-.5-1.5z" fill="#9B72EF" stroke="#9B72EF" strokeWidth="0.5" strokeLinejoin="round"/>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" style={{ marginRight: 5 }}>
+          <path d="M5 17H19V13L17 5H7L5 13V17Z" fill="#9B72EF" stroke="#9B72EF" strokeWidth="0.8" strokeLinejoin="round"/>
+          <line x1="5" y1="9" x2="19" y2="9" stroke="#7B52CF" strokeWidth="1.2" strokeLinecap="round"/>
+          <line x1="12" y1="17" x2="12" y2="22" stroke="#9B72EF" strokeWidth="1.6" strokeLinecap="round"/>
         </svg>
         <span>{sorted.length} pinned</span>
         <span className="pinned-strip-chevron">{open ? "▲" : "▼"}</span>
@@ -1099,8 +1101,10 @@ export default function MainPanel() {
                     title={pinned ? "Unpin message" : "Pin message"}
                     onClick={() => currentSessionId && togglePinMessage(currentSessionId, absIdx)}
                   >
-                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-                      <path d="M10 2l4 4-2 2-1.5-.5L8 10l.5 4-2-2-3 3-2-2 3-3-2-2 4 .5 2.5-2.5-.5-1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill={pinned ? "currentColor" : "none"}/>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+                      <path d="M5 17H19V13L17 5H7L5 13V17Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill={pinned ? "currentColor" : "none"}/>
+                      <line x1="5" y1="9" x2="19" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                      <line x1="12" y1="17" x2="12" y2="22" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
                     </svg>
                   </button>
                   <MessageRenderer
