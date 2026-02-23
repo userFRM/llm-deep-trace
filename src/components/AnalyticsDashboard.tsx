@@ -70,7 +70,7 @@ function StackedBarChart({
   const totalW = data.length * (barW + gap);
 
   return (
-    <svg width="100%" viewBox={`0 0 ${totalW} ${chartH}`} preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}>
+    <svg width="100%" viewBox={`0 0 ${totalW} ${chartH}`} preserveAspectRatio="none" style={{ display: "block", height: chartH }}>
       {data.map((day, i) => {
         const x = i * (barW + gap);
         let yOffset = chartH;
