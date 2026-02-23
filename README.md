@@ -2,6 +2,11 @@
   <img src="public/banner-v2.png" width="900" alt="llm-deep-trace" />
   <br/><br/>
   <p>Browse, search, and analyze every conversation your agents have ever had.<br/>All local. No accounts. No cloud.</p>
+  <br/>
+  <a href="https://www.npmjs.com/package/llm-deep-trace"><img src="https://img.shields.io/npm/v/llm-deep-trace?color=9B72EF&label=npm" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/llm-deep-trace"><img src="https://img.shields.io/npm/dm/llm-deep-trace?color=9B72EF&label=downloads" alt="npm downloads" /></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D18-9B72EF" alt="node >=18" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-9B72EF" alt="MIT license" /></a>
 </div>
 
 ---
