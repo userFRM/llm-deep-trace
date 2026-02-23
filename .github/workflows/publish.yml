@@ -31,10 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Configure npm registry for OIDC trusted publishing
-        run: |
-          echo "registry=https://registry.npmjs.org/" > "$HOME/.npmrc"
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: npm ci
@@ -46,13 +43,6 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      - name: Debug npm env
-        run: |
-          npm --version
-          cat "$HOME/.npmrc"
-          echo "OIDC URL set: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}"
-          env | grep ACTIONS_ID_TOKEN || echo "no OIDC env vars found"
 
       - name: Publish to npm
         run: npm publish --access public --provenance || echo "Version already published, skipping"
