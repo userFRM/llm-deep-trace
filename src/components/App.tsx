@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useCallback, useRef, lazy, Suspense } from "react";
+import { useEffect, useCallback, useRef, lazy, Suspense, useState } from "react";
 import { useStore } from "@/lib/store";
 import { useSSE } from "@/lib/useSSE";
 import { sessionLabel } from "@/lib/client-utils";
 import Sidebar from "./Sidebar";
 import MainPanel from "./MainPanel";
 import AnalyticsDashboard from "./AnalyticsDashboard";
+import SetupView from "./SetupView";
 
 const SessionTree = lazy(() => import("./SessionTree"));
 
@@ -31,6 +32,13 @@ export default function App() {
 
   const treeDragging = useRef(false);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [showSetup, setShowSetup] = useState<boolean | null>(null); // null = not yet checked
+
+  useEffect(() => {
+    const done = localStorage.getItem("llm-deep-trace-setup-done");
+    const forceSetup = new URLSearchParams(window.location.search).get("setup") === "1";
+    setShowSetup(!done || forceSetup);
+  }, []);
 
   useEffect(() => {
     initFromLocalStorage();
@@ -188,6 +196,10 @@ export default function App() {
     : currentSessionId
       ? currentSessionId.slice(0, 14) + "\u2026"
       : "Session";
+
+  // Show setup on first run (null = still checking localStorage, avoid flash)
+  if (showSetup === null) return null;
+  if (showSetup) return <SetupView onDone={() => setShowSetup(false)} />;
 
   return (
     <div className="app-shell">
