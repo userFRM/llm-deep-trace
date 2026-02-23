@@ -3,9 +3,8 @@
 # How to release:
 #   git tag v0.2.0 && git push --tags
 #
-# Required secret: NPM_TOKEN
-#   npmjs.com → Access Tokens → Granular → Read+write on llm-deep-trace
-#   GitHub repo → Settings → Secrets → Actions → NPM_TOKEN
+# No NPM_TOKEN needed — uses OIDC trusted publishing.
+# npmjs.com → package → Settings → Trusted Publishers → configured.
 
 name: Publish
 
@@ -16,11 +15,15 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   publish:
     name: Build, publish & release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -28,8 +31,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
+
+      - name: Configure npm registry for OIDC trusted publishing
+        run: |
+          echo "registry=https://registry.npmjs.org/" > "$HOME/.npmrc"
 
       - name: Install dependencies
         run: npm ci
@@ -43,9 +48,7 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish --access public || echo "Version already published, skipping"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance || echo "Version already published, skipping"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
