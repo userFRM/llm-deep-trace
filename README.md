@@ -87,6 +87,28 @@ Open [http://localhost:3000](http://localhost:3000). No config needed — it fin
 
 ---
 
+## Running remotely
+
+llm-deep-trace reads files from the machine it runs on. If your agent sessions live on a remote server (VPS, home lab, cloud box), you have a few options:
+
+**SSH tunnel** — forward the port to your local machine:
+```bash
+ssh -L 3000:localhost:3000 user@your-server
+# then open http://localhost:3000 locally
+```
+
+**Tailscale** — start the server bound to your Tailscale IP:
+```bash
+npx next start --hostname <tailscale-ip> --port 3000
+# accessible at http://<tailscale-ip>:3000 from any device on your Tailscale network
+```
+
+**VPS / cloud** — same as SSH tunnel, or bind to a private network interface. Do not expose port 3000 to the public internet — there's no auth.
+
+In all cases: the app runs on the machine where your `~/.claude/`, `~/.kimi/`, etc. directories live.
+
+---
+
 ## How to ship it (for contributors)
 
 Right now: clone and run locally. That's the intended workflow for a local devtool.
