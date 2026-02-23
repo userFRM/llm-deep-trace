@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/banner.png" width="900" alt="llm-deep-trace" />
+  <img src="public/banner-v2.png" width="900" alt="llm-deep-trace" />
   <br/><br/>
   <p>Browse, search, and analyze every conversation your agents have ever had.<br/>All local. No accounts. No cloud.</p>
 </div>
