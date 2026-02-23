@@ -2,7 +2,16 @@
   "name": "llm-deep-trace",
   "version": "0.1.0",
   "description": "The session browser for coding agents — Claude Code, Codex, Kimi, Gemini CLI, OpenClaw, Cursor, Aider, and more.",
-  "keywords": ["claude-code", "codex", "kimi", "gemini", "ai-agents", "llm", "session-browser", "devtools"],
+  "keywords": [
+    "claude-code",
+    "codex",
+    "kimi",
+    "gemini",
+    "ai-agents",
+    "llm",
+    "session-browser",
+    "devtools"
+  ],
   "homepage": "https://github.com/userFRM/llm-deep-trace",
   "repository": {
     "type": "git",
@@ -31,5 +40,17 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "typescript": "^5"
-  }
+  },
+  "bin": {
+    "llm-deep-trace": "bin/llm-deep-trace.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "public/",
+    "next.config.ts",
+    "tsconfig.json",
+    "postcss.config.mjs",
+    "tailwind.config.ts"
+  ]
 }
