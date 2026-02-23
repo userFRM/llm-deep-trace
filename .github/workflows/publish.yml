@@ -3,12 +3,9 @@
 # How to release:
 #   git tag v0.2.0 && git push --tags
 #
-# That's it. CI handles build, npm publish, and GitHub release automatically.
-# No NPM_TOKEN needed — uses OIDC trusted publishing.
-#
-# One-time setup on npmjs.com:
-#   Package → Settings → Publishing → Add publishing rule for GitHub Actions
-#   Repository: userFRM/llm-deep-trace, workflow: publish.yml
+# Required secret: NPM_TOKEN
+#   npmjs.com → Access Tokens → Granular → Read+write on llm-deep-trace
+#   GitHub repo → Settings → Secrets → Actions → NPM_TOKEN
 
 name: Publish
 
@@ -19,7 +16,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   publish:
@@ -32,11 +28,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
-
-      - name: Configure npm registry for OIDC trusted publishing
-        run: |
-          echo "registry=https://registry.npmjs.org/" > "$HOME/.npmrc"
 
       - name: Install dependencies
         run: npm ci
@@ -50,7 +43,9 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish --access public --provenance || echo "Version already published, skipping"
+        run: npm publish --access public || echo "Version already published, skipping"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
