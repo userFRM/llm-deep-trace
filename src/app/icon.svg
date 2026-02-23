@@ -1,17 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="7" fill="#0D0D0F"/>
-  <!-- spiral trace line through all 9 points -->
-  <path d="M 18.0 16.0 L 17.6 18.7 L 14.0 19.7 L 10.6 16.0 L 12.8 10.3 L 19.9 9.3 L 24.9 16.0 L 21.1 24.7 L 10.5 25.7"
-        stroke="#9B72EF" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>
-  <!-- dim outer dots (i=6,7,8) -->
-  <circle cx="24.9" cy="16.0" r="1.5" fill="white" opacity="0.2"/>
-  <circle cx="21.1" cy="24.7" r="1.5" fill="white" opacity="0.2"/>
-  <circle cx="10.5" cy="25.7" r="1.5" fill="white" opacity="0.2"/>
-  <!-- highlighted purple dots (i=0..5) — inner spiral, fading outward -->
-  <circle cx="18.0" cy="16.0" r="2.8" fill="#9B72EF" opacity="1.0"/>
-  <circle cx="17.6" cy="18.7" r="2.15" fill="#9B72EF" opacity="0.9"/>
-  <circle cx="14.0" cy="19.7" r="2.1" fill="#9B72EF" opacity="0.8"/>
-  <circle cx="10.6" cy="16.0" r="2.05" fill="#9B72EF" opacity="0.7"/>
-  <circle cx="12.8" cy="10.3" r="2.0" fill="#9B72EF" opacity="0.6"/>
-  <circle cx="19.9" cy="9.3"  r="1.95" fill="#9B72EF" opacity="0.5"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <rect width="1024" height="1024" rx="200" fill="#0D0D0F"/>
+  <path d="M832 384l8 1.6-1.6 8 1.6 3.2-4.8 3.2-44.8 161.6-16-4.8 40-147.2-260.8 144-158.4 284.8-11.2-6.4-6.4 6.4-176-176 11.2-11.2 163.2 163.2 147.2-265.6-294.4-297.6 11.2-11.2v-8h9.6l3.2-3.2 3.2 3.2L664 208l1.6 16-395.2 22.4 278.4 278.4 276.8-153.6 6.4 12.8z" fill="#3D1B8C"/>
+  <path d="M896 384c0 35.2-28.8 64-64 64s-64-28.8-64-64 28.8-64 64-64 64 28.8 64 64z m-656-32c-62.4 0-112-49.6-112-112s49.6-112 112-112 112 49.6 112 112-49.6 112-112 112z m304 336c-80 0-144-64-144-144s64-144 144-144 144 64 144 144-64 144-144 144z m-224 144c0-35.2 28.8-64 64-64s64 28.8 64 64-28.8 64-64 64-64-28.8-64-64z m-144-176c0-17.6 14.4-32 32-32s32 14.4 32 32-14.4 32-32 32-32-14.4-32-32z m448-440c0-22.4 17.6-40 40-40s40 17.6 40 40-17.6 40-40 40-40-17.6-40-40zM736 560c0-27.2 20.8-48 48-48s48 20.8 48 48-20.8 48-48 48-48-20.8-48-48z" fill="#9B72EF"/>
 </svg>
