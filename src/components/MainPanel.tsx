@@ -120,7 +120,7 @@ function MsgSearchBar({
       <input
         ref={inputRef}
         type="text"
-        placeholder="Search in session\u2026"
+        placeholder="Search in session…"
         autoComplete="off"
         spellCheck={false}
         value={query}
