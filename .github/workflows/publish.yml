@@ -47,6 +47,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Debug npm env
+        run: |
+          npm --version
+          cat "$HOME/.npmrc"
+          echo "OIDC URL set: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}"
+          env | grep ACTIONS_ID_TOKEN || echo "no OIDC env vars found"
+
       - name: Publish to npm
         run: npm publish --access public --provenance || echo "Version already published, skipping"
 
