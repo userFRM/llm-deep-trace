@@ -2928,17 +2928,18 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   align-items: center;
   height: 100vh;
   background: var(--bg);
-  padding: 48px 24px 100px; /* bottom padding clears sticky footer */
-  overflow-y: auto;
+  overflow: hidden;
+  padding: 40px 24px 0;
 }
 
 .setup-header {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 40px;
+  gap: 10px;
+  margin-bottom: 24px;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .setup-logo {
@@ -2991,9 +2992,12 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
 .setup-agent-list {
   width: 100%;
   max-width: 720px;
+  flex: 1;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding-bottom: 8px;
 }
 
 .setup-agent-row {
@@ -3150,17 +3154,13 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
 .setup-path-clear:hover { color: var(--text-1); }
 
 .setup-footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 16px;
-  padding: 16px 24px;
-  background: linear-gradient(to top, var(--bg) 70%, transparent);
-  z-index: 10;
+  padding: 20px 24px 28px;
+  flex-shrink: 0;
+  width: 100%;
 }
 
 .setup-start-btn {
