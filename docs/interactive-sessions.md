@@ -16,7 +16,7 @@ This feature would make it bidirectional. You'd be able to:
 - Have that message routed to the underlying CLI agent
 - See the response stream back into the UI in real time — just like a normal conversation
 
-The CLI stays the source of truth. The UI is a window into it.
+The CLI and the web UI become two equal interfaces to the same session. The JSONL file is the shared state — whatever you send from one side is visible to the other. You can continue a session from the terminal in the morning, check in from the web UI on your phone at lunch, and switch back to the terminal in the afternoon. Full context throughout.
 
 ---
 
@@ -44,6 +44,20 @@ You have sessions from Claude Code, Codex, and Kimi. Today you'd need to resume 
 
 ---
 
+## How sync works
+
+The JSONL session file is the single source of truth. Both the terminal and the web UI read and write to it — they don't talk to each other directly.
+
+**Terminal → UI (already works today)**  
+You type in the terminal, the CLI writes the exchange to the JSONL, LLM Deep Trace's live tail picks it up and renders it in real time. No changes needed.
+
+**UI → terminal**  
+You type in the web UI, the server spawns the CLI with `--resume`, it writes the response to the same JSONL, live tail renders it on both sides. The terminal session doesn't receive the message interactively — but since the history file is shared, if you continue from the terminal afterwards the full context is there.
+
+You can alternate between the two freely. The sync is real but indirect: both interfaces read and write the same file, and each sees what the other produced.
+
+**The one conflict scenario:** if the CLI is mid-response (actively writing) and you send from the UI at the same time, two processes would write to the same file concurrently. The fix: the UI checks whether the session is marked active (this is already tracked) and blocks sends while it is.
+
 ## How it would work technically
 
 Each supported CLI has a way to resume a session non-interactively:
@@ -60,7 +74,7 @@ When you send a message from the UI:
 1. `POST /api/sessions/[sessionKey]/send` receives the message
 2. The server spawns the appropriate CLI with `--resume` and the message
 3. The CLI writes its response to the same JSONL session file
-4. The existing SSE live-tail picks it up and renders it in real time
+4. The existing SSE live-tail picks it up and renders it in real time — in the web UI and in any terminal watching the file
 5. No new streaming infrastructure needed — just the CLI doing what it already does
 
 Process model: spawn-and-wait per message (simple, ~1s overhead per turn) or keep-alive stdin pipe (faster, more complex). We'd start with spawn-and-wait.
