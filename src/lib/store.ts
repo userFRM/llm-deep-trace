@@ -381,7 +381,9 @@ export const useStore = create<AppState>((set, get) => ({
   archiveSession: (sessionId) => {
     const ids = new Set(get().archivedSessionIds);
     ids.add(sessionId);
-    set({ archivedSessionIds: ids });
+    const update: Partial<ReturnType<typeof get>> = { archivedSessionIds: ids };
+    if (get().currentSessionId === sessionId) update.currentSessionId = null;
+    set(update);
     saveArchivedIds(ids);
     get().applyFilter();
   },
@@ -404,8 +406,8 @@ export const useStore = create<AppState>((set, get) => ({
   initFromLocalStorage: () => {
     set({
       expandedGroups: new Set(), // always start collapsed
+      settings: { ...loadSettings(), autoExpandToolCalls: false }, // blocks always collapsed by default
       blockColors: loadBlockColors(),
-      settings: loadSettings(),
       sidebarWidth: loadSidebarWidth(),
       treePanelWidth: loadTreePanelWidth(),
       archivedSessionIds: loadArchivedIds(),

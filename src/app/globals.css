@@ -949,30 +949,33 @@ html, body {
 /* ── Thinking block ───────────────── */
 
 .thinking-block {
-  margin: 8px 0;
+  margin: 6px 0;
   border-radius: var(--radius);
   overflow: hidden;
-  border-left: 2px solid var(--block-accent, var(--indigo));
-  padding-left: 8px;
+  border: 1px solid color-mix(in srgb, var(--block-accent, #6366F1) 25%, var(--border));
+  background: var(--thinking-bg);
 }
 
 .thinking-block.expanded {
-  background: var(--thinking-bg);
+  background: color-mix(in srgb, var(--block-accent, #6366F1) 5%, var(--surface));
 }
 
 .thinking-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 0;
+  padding: 7px 10px;
   cursor: pointer;
   user-select: none;
   font-size: 12px;
   color: var(--text-3);
-  transition: color 0.12s;
+  transition: color 0.12s, background 0.12s;
 }
 
-.thinking-header:hover { color: var(--text-2); }
+.thinking-header:hover {
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--block-accent, #6366F1) 8%, transparent);
+}
 
 .thinking-chevron {
   transition: transform 0.15s;
@@ -1001,7 +1004,7 @@ html, body {
 }
 
 .thinking-body-inner {
-  padding: 8px 0 8px 8px;
+  padding: 8px 12px 10px 12px;
   font-size: 12px;
   color: var(--text-3);
   white-space: pre-wrap;
@@ -2711,8 +2714,30 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   font-size: 12px;
   font-weight: 500;
   color: var(--text-2);
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   letter-spacing: 0.02em;
+}
+
+.analytics-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+}
+
+.analytics-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.analytics-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 .analytics-empty {

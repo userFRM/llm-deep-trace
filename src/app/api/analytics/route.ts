@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const HOME = os.homedir();
 
 interface AnalyticsData {
-  sessionsPerDay: { date: string; count: number }[];
+  sessionsPerDay: { date: string; count: number; byProvider: Record<string, number> }[];
   providerBreakdown: { provider: string; count: number; pct: number }[];
   topTools: { name: string; count: number }[];
   tokenTotals: { inputTokens: number; outputTokens: number; avgPerSession: number };
@@ -101,6 +101,7 @@ function getFileDate(filePath: string): string | null {
 export async function GET() {
   const acc = {
     dates: new Map<string, number>(),
+    datesByProvider: new Map<string, Map<string, number>>(),
     providers: new Map<string, number>(),
     tools: new Map<string, number>(),
     inputTokens: 0,
@@ -117,6 +118,9 @@ export async function GET() {
     const date = getFileDate(filePath);
     if (date && date >= cutoff) {
       acc.dates.set(date, (acc.dates.get(date) || 0) + 1);
+      if (!acc.datesByProvider.has(source)) acc.datesByProvider.set(source, new Map());
+      const pm = acc.datesByProvider.get(source)!;
+      pm.set(date, (pm.get(date) || 0) + 1);
     }
     acc.providers.set(source, (acc.providers.get(source) || 0) + 1);
     acc.sessionCount++;
@@ -257,14 +261,19 @@ export async function GET() {
     } catch { /* */ }
   }
 
-  // Build sessions per day (last 30 days)
-  const sessionsPerDay: { date: string; count: number }[] = [];
+  // Build sessions per day (last 30 days) with per-provider breakdown
+  const allProviders = Array.from(acc.providers.keys());
+  const sessionsPerDay: { date: string; count: number; byProvider: Record<string, number> }[] = [];
   const now = new Date();
   for (let i = 29; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
     const key = d.toISOString().slice(0, 10);
-    sessionsPerDay.push({ date: key, count: acc.dates.get(key) || 0 });
+    const byProvider: Record<string, number> = {};
+    for (const p of allProviders) {
+      byProvider[p] = acc.datesByProvider.get(p)?.get(key) || 0;
+    }
+    sessionsPerDay.push({ date: key, count: acc.dates.get(key) || 0, byProvider });
   }
 
   // Provider breakdown

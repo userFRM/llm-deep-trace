@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 interface AnalyticsData {
-  sessionsPerDay: { date: string; count: number }[];
+  sessionsPerDay: { date: string; count: number; byProvider: Record<string, number> }[];
   providerBreakdown: { provider: string; count: number; pct: number }[];
   topTools: { name: string; count: number }[];
   tokenTotals: { inputTokens: number; outputTokens: number; avgPerSession: number };
@@ -31,8 +31,23 @@ function fmtNum(n: number): string {
   return String(n);
 }
 
-// ── Sessions per day bar chart ──
-function SessionsPerDayChart({ data }: { data: { date: string; count: number }[] }) {
+// ── Provider legend (shown at top of analytics) ──
+function ProviderLegend({ providers }: { providers: string[] }) {
+  if (providers.length === 0) return null;
+  return (
+    <div className="analytics-legend">
+      {providers.map((p) => (
+        <span key={p} className="analytics-legend-item">
+          <span className="analytics-legend-dot" style={{ background: PROVIDER_COLORS[p] || "#71717A" }} />
+          {p}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ── Sessions per day — stacked bar chart ──
+function SessionsPerDayChart({ data }: { data: { date: string; count: number; byProvider: Record<string, number> }[] }) {
   const maxCount = Math.max(...data.map((d) => d.count), 1);
   const barW = 16;
   const gap = 4;
@@ -41,9 +56,15 @@ function SessionsPerDayChart({ data }: { data: { date: string; count: number }[]
   const padTop = 20;
   const padBot = 30;
 
+  // Determine which providers appear in the data
+  const providerSet = new Set<string>();
+  data.forEach((d) => Object.keys(d.byProvider).forEach((p) => { if (d.byProvider[p] > 0) providerSet.add(p); }));
+  const providers = Array.from(providerSet);
+
   return (
     <div className="analytics-section">
       <h3 className="analytics-section-title">Sessions per day</h3>
+      <ProviderLegend providers={providers} />
       <div className="analytics-chart-wrap">
         <svg
           width={chartW}
@@ -52,38 +73,47 @@ function SessionsPerDayChart({ data }: { data: { date: string; count: number }[]
           className="analytics-svg"
         >
           {data.map((d, i) => {
-            const barH = (d.count / maxCount) * chartH;
             const x = i * (barW + gap);
-            const y = padTop + (chartH - barH);
             const showLabel = i % 5 === 0 || i === data.length - 1;
+            // Build stacked segments bottom-up
+            let stackY = padTop + chartH; // start at baseline
+            const segments: { y: number; h: number; color: string; provider: string }[] = [];
+
+            if (d.count > 0) {
+              for (const p of providers) {
+                const pCount = d.byProvider[p] || 0;
+                if (pCount === 0) continue;
+                const segH = (pCount / maxCount) * chartH;
+                stackY -= segH;
+                segments.push({ y: stackY, h: segH, color: PROVIDER_COLORS[p] || "#71717A", provider: p });
+              }
+              // Any remaining count from providers not in legend
+              const covered = providers.reduce((s, p) => s + (d.byProvider[p] || 0), 0);
+              const remaining = d.count - covered;
+              if (remaining > 0) {
+                const segH = (remaining / maxCount) * chartH;
+                stackY -= segH;
+                segments.push({ y: stackY, h: segH, color: "#71717A", provider: "other" });
+              }
+            }
+
+            const totalBarTop = segments.length > 0 ? segments[segments.length - 1].y : padTop + chartH;
+
             return (
               <g key={d.date}>
-                <rect
-                  x={x}
-                  y={y}
-                  width={barW}
-                  height={Math.max(barH, 1)}
-                  rx={2}
-                  fill="#9B72EF"
-                  opacity={d.count > 0 ? 0.85 : 0.15}
-                />
+                {d.count === 0 && (
+                  <rect x={x} y={padTop + chartH - 2} width={barW} height={2} rx={1} fill="var(--border)" opacity={0.4} />
+                )}
+                {segments.map((seg, si) => (
+                  <rect key={si} x={x} y={seg.y} width={barW} height={Math.max(seg.h, 1)} rx={si === segments.length - 1 ? 2 : 0} fill={seg.color} opacity={0.88} />
+                ))}
                 {d.count > 0 && (
-                  <text
-                    x={x + barW / 2}
-                    y={y - 4}
-                    textAnchor="middle"
-                    className="analytics-bar-label"
-                  >
+                  <text x={x + barW / 2} y={totalBarTop - 4} textAnchor="middle" className="analytics-bar-label">
                     {d.count}
                   </text>
                 )}
                 {showLabel && (
-                  <text
-                    x={x + barW / 2}
-                    y={chartH + padTop + 16}
-                    textAnchor="middle"
-                    className="analytics-axis-label"
-                  >
+                  <text x={x + barW / 2} y={chartH + padTop + 16} textAnchor="middle" className="analytics-axis-label">
                     {d.date.slice(5)}
                   </text>
                 )}
