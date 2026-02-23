@@ -3563,3 +3563,48 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   background: var(--border);
   margin: 4px 0;
 }
+
+/* ── Font size control (applied via --msg-font-size on #messages-container) ── */
+#messages-container .msg-user-text,
+#messages-container .md-content { font-size: var(--msg-font-size, 13px); }
+#messages-container .md-content h1 { font-size: calc(var(--msg-font-size, 13px) + 4px); }
+#messages-container .md-content h2 { font-size: calc(var(--msg-font-size, 13px) + 2px); }
+#messages-container .md-content h3 { font-size: var(--msg-font-size, 13px); }
+#messages-container .thinking-body-inner,
+#messages-container .tool-call-body,
+#messages-container .tool-result-body { font-size: var(--msg-font-size, 13px); }
+
+/* ── Font size control (header) ── */
+.font-size-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 3px;
+  height: 22px;
+}
+.fs-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-2);
+  padding: 2px 3px;
+  border-radius: 3px;
+  line-height: 1;
+  transition: color 0.12s, background 0.12s;
+}
+.fs-btn:hover:not(:disabled) { color: var(--text-1); background: var(--hover); }
+.fs-btn:disabled { opacity: 0.3; cursor: default; }
+.fs-value {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  min-width: 16px;
+  text-align: center;
+  user-select: none;
+}

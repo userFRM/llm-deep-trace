@@ -754,6 +754,17 @@ export default function MainPanel() {
   const [displayCount, setDisplayCount] = useState(100);
   const loadingMoreRef = useRef(false);
   const [refPopoverOpen, setRefPopoverOpen] = useState(false);
+  const [fontSize, setFontSize] = useState<number>(() => {
+    if (typeof window === "undefined") return 13;
+    return parseInt(localStorage.getItem("llm-deep-trace-font-size") || "13", 10);
+  });
+  const changeFontSize = useCallback((delta: number) => {
+    setFontSize(prev => {
+      const next = Math.min(20, Math.max(10, prev + delta));
+      localStorage.setItem("llm-deep-trace-font-size", String(next));
+      return next;
+    });
+  }, []);
 
   const sess = sessions.find((s) => s.sessionId === currentSessionId);
   const errors = useErrorInfo(currentMessages);
@@ -1017,6 +1028,22 @@ export default function MainPanel() {
               {refPopoverOpen && <LlmRefPopover filePath={sess.filePath} onClose={() => setRefPopoverOpen(false)} />}
             </div>
           )}
+          {/* Font size */}
+          <div className="font-size-ctrl" title="Adjust text size">
+            <button className="fs-btn" onClick={() => changeFontSize(-1)} disabled={fontSize <= 10}>
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                <text x="0" y="12" fontSize="11" fill="currentColor" fontFamily="system-ui">A</text>
+                <text x="8" y="14" fontSize="8" fill="currentColor" fontFamily="system-ui">−</text>
+              </svg>
+            </button>
+            <span className="fs-value">{fontSize}</span>
+            <button className="fs-btn" onClick={() => changeFontSize(1)} disabled={fontSize >= 20}>
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                <text x="0" y="12" fontSize="13" fill="currentColor" fontFamily="system-ui">A</text>
+                <text x="10" y="9" fontSize="8" fill="currentColor" fontFamily="system-ui">+</text>
+              </svg>
+            </button>
+          </div>
           {/* Export */}
           <ExportButton messages={currentMessages} hiddenBlockTypes={hiddenBlockTypes} sess={sess} />
         </div>
@@ -1064,6 +1091,7 @@ export default function MainPanel() {
         id="messages-container"
         ref={messagesRef}
         className="messages-thread scroller"
+        style={{ "--msg-font-size": `${fontSize}px` } as React.CSSProperties}
       >
         <div className="messages-inner">
           {loading ? (
