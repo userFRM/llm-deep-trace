@@ -3517,3 +3517,42 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   border-color: var(--accent-border);
   color: var(--accent);
 }
+
+/* ── Block-level pin button (in block headers) ─── */
+.block-pin-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--text-3);
+  opacity: 0;
+  margin-left: auto;
+  border-radius: 4px;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+  flex-shrink: 0;
+}
+.thinking-header:hover .block-pin-btn,
+.tool-call-header:hover .block-pin-btn,
+.tool-result-header:hover .block-pin-btn,
+.msg-user:hover .block-pin-btn,
+.msg-assistant:hover .block-pin-btn,
+.block-pin-btn.pinned { opacity: 1; }
+.block-pin-btn.pinned { color: #9B72EF; }
+.block-pin-btn:hover { color: #9B72EF; background: rgba(155,114,239,0.1); }
+
+/* Pinned state tint on user/asst card */
+.msg-user.is-pinned { outline: 1px solid rgba(155,114,239,0.35); }
+.msg-assistant.is-pinned { outline: 1px solid rgba(155,114,239,0.35); }
+
+/* Block type badge in pinned strip */
+.pinned-block-badge {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Favourites rename (sidebar tab "starred" css class unchanged, just label) */

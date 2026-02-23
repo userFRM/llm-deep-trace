@@ -137,14 +137,36 @@ function ArgsList({ input }: { input: Record<string, unknown> }) {
 }
 
 // ── Thinking Block ── (fixed: forceOpen only sets initial state)
+function BlockPinBtn({ isPinned, onPin }: { isPinned: boolean; onPin: () => void }) {
+  return (
+    <button
+      className={`block-pin-btn ${isPinned ? "pinned" : ""}`}
+      title={isPinned ? "Unpin block" : "Pin block"}
+      onClick={(e) => { e.stopPropagation(); onPin(); }}
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+        <path d="M5 17H19V13L17 5H7L5 13V17Z"
+          stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"
+          fill={isPinned ? "currentColor" : "none"}/>
+        <line x1="5" y1="9" x2="19" y2="9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+        <line x1="12" y1="17" x2="12" y2="22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    </button>
+  );
+}
+
 function ThinkingBlock({
   text,
   forceOpen,
   accentColor,
+  isPinned,
+  onPin,
 }: {
   text: string;
   forceOpen: boolean;
   accentColor: string;
+  isPinned?: boolean;
+  onPin?: () => void;
 }) {
   const [open, setOpen] = useState(forceOpen);
 
@@ -166,6 +188,7 @@ function ThinkingBlock({
         <span className="thinking-hint">
           {open ? "collapse" : "expand"}
         </span>
+        {onPin && <BlockPinBtn isPinned={!!isPinned} onPin={onPin} />}
       </div>
       <div className={`thinking-body ${open ? "open" : ""}`}>
         <div className="thinking-body-inner">{text}</div>
@@ -180,11 +203,15 @@ function ToolCallBlock({
   blockColors,
   autoExpand,
   globalExpand,
+  isPinned,
+  onPin,
 }: {
   block: Record<string, unknown>;
   blockColors: BlockColors;
   autoExpand: boolean;
   globalExpand?: boolean;
+  isPinned?: boolean;
+  onPin?: () => void;
 }) {
   const name = (block.name as string) || "?";
   const input = (block.input || {}) as Record<string, unknown>;
@@ -267,6 +294,7 @@ function ToolCallBlock({
         <span className="tc-dot" style={{ background: accent }} />
         <span className="tc-name-label">{name}</span>
         {!expanded && desc && <span className="tc-desc">{desc}</span>}
+        {onPin && <BlockPinBtn isPinned={!!isPinned} onPin={onPin} />}
       </div>
       {expanded && (
         <div className="tool-call-body open">
@@ -287,6 +315,8 @@ function ToolResultBlock({
   globalExpand,
   toolInputsMap,
   onNavigateSession,
+  isPinned,
+  onPin,
 }: {
   msg: NonNullable<NormalizedMessage["message"]>;
   time: string;
@@ -296,6 +326,8 @@ function ToolResultBlock({
   globalExpand?: boolean;
   toolInputsMap?: Map<string, Record<string, unknown>>;
   onNavigateSession?: (key: string) => void;
+  isPinned?: boolean;
+  onPin?: () => void;
 }) {
   const toolName = msg.toolName || "";
   const isError = msg.isError || false;
@@ -629,6 +661,7 @@ function ToolResultBlock({
           {toolName || "tool"} {isError ? "error" : "result"}
         </span>
         {!expanded && <span className="tr-summary">{summary}</span>}
+        {onPin && <BlockPinBtn isPinned={!!isPinned} onPin={onPin} />}
       </div>
       {expanded && (
         <div className="tool-result-body">
@@ -641,7 +674,7 @@ function ToolResultBlock({
 }
 
 // ── User Message ──
-function UserMessage({ content, time, showTime }: { content: unknown; time: string; showTime: boolean }) {
+function UserMessage({ content, time, showTime, isPinned, onPin }: { content: unknown; time: string; showTime: boolean; isPinned?: boolean; onPin?: () => void }) {
   let text = extractText(content);
   text = stripConversationMeta(text);
 
@@ -659,10 +692,11 @@ function UserMessage({ content, time, showTime }: { content: unknown; time: stri
 
   return (
     <div className="msg">
-      <div className="msg-user copyable">
+      <div className={`msg-user copyable ${isPinned ? "is-pinned" : ""}`}>
         {text && <div className="msg-user-text">{text}</div>}
         {imageBlocks.length > 0 && <div className="msg-image-row">{imageBlocks}</div>}
         {text && <CopyButton text={text} label="Copy text" />}
+        {onPin && <BlockPinBtn isPinned={!!isPinned} onPin={onPin} />}
       </div>
       {showTime && <div className="msg-time">{time}</div>}
     </div>
@@ -680,6 +714,9 @@ function AssistantMessage({
   autoExpand,
   hiddenBlockTypes,
   hideText,
+  msgIndex,
+  pinnedBlockIds,
+  onPinBlock,
 }: {
   content: unknown;
   time: string;
@@ -690,6 +727,9 @@ function AssistantMessage({
   autoExpand: boolean;
   hiddenBlockTypes?: Set<string>;
   hideText?: boolean;
+  msgIndex?: number;
+  pinnedBlockIds?: Set<string>;
+  onPinBlock?: (blockId: string, blockType: string, preview: string) => void;
 }) {
   if (!content) return null;
 
@@ -728,25 +768,37 @@ function AssistantMessage({
         // Thinking goes to its own bucket — independently controlled by the thinking filter,
         // NOT suppressed by the asst-text filter
         if (!hiddenBlockTypes?.has("thinking")) {
+          const blockId = `thinking-${msgIndex ?? 0}-${i}`;
+          const preview = (block.thinking as string).slice(0, 80);
           thinkingParts.push(
             <ThinkingBlock
               key={`th${i}`}
               text={block.thinking as string}
               forceOpen={allThinkingExpanded}
               accentColor={blockColors.thinking}
+              isPinned={pinnedBlockIds?.has(blockId)}
+              onPin={onPinBlock ? () => onPinBlock(blockId, "thinking", preview) : undefined}
             />
           );
         }
       } else if (block.type === "tool_use") {
         const catKey = toolColorKey((block.name as string) || "") as BlockCategory;
         if (!catKey || !hiddenBlockTypes?.has(catKey)) {
+          const blockId = `tool-${msgIndex ?? 0}-${i}`;
+          const preview = (block.name as string) || "tool";
           toolCallParts.push(
-            <ToolCallBlock key={`tc${i}`} block={block} blockColors={blockColors} autoExpand={autoExpand} globalExpand={catKey && blockExpansion ? blockExpansion[catKey] : undefined} />
+            <ToolCallBlock key={`tc${i}`} block={block} blockColors={blockColors} autoExpand={autoExpand}
+              globalExpand={catKey && blockExpansion ? blockExpansion[catKey] : undefined}
+              isPinned={pinnedBlockIds?.has(blockId)}
+              onPin={onPinBlock ? () => onPinBlock(blockId, catKey || "exec", preview) : undefined}
+            />
           );
         }
       } else if (block.type === "toolCall") {
         const catKey = toolColorKey((block.name as string) || "") as BlockCategory;
         if (!catKey || !hiddenBlockTypes?.has(catKey)) {
+          const blockId = `tool-${msgIndex ?? 0}-${i}`;
+          const preview = (block.name as string) || "tool";
           toolCallParts.push(
             <ToolCallBlock
               key={`tc${i}`}
@@ -754,6 +806,8 @@ function AssistantMessage({
               blockColors={blockColors}
               autoExpand={autoExpand}
               globalExpand={catKey && blockExpansion ? blockExpansion[catKey] : undefined}
+              isPinned={pinnedBlockIds?.has(blockId)}
+              onPin={onPinBlock ? () => onPinBlock(blockId, catKey || "exec", preview) : undefined}
             />
           );
         }
@@ -786,15 +840,20 @@ function AssistantMessage({
 
   return (
     <>
-      {showText && (
-        <div className="msg">
-          <div className="msg-assistant copyable">
-            <div className="msg-text">{textOnlyParts}</div>
-            <CopyButton text={combinedMd} label="Copy as markdown" />
+      {showText && (() => {
+        const blockId = `asst-text-${msgIndex ?? 0}`;
+        const preview = rawMdParts.join(" ").slice(0, 80);
+        return (
+          <div className="msg">
+            <div className={`msg-assistant copyable ${pinnedBlockIds?.has(blockId) ? "is-pinned" : ""}`}>
+              <div className="msg-text">{textOnlyParts}</div>
+              <CopyButton text={combinedMd} label="Copy as markdown" />
+              {onPinBlock && <BlockPinBtn isPinned={!!pinnedBlockIds?.has(blockId)} onPin={() => onPinBlock(blockId, "asst-text", preview)} />}
+            </div>
+            {showTime && <div className="msg-time">{time}</div>}
           </div>
-          {showTime && <div className="msg-time">{time}</div>}
-        </div>
-      )}
+        );
+      })()}
       {thinkingParts}
       {toolCallParts}
     </>
@@ -911,6 +970,9 @@ function MessageRenderer({
   toolInputsMap,
   onNavigateSession,
   hiddenBlockTypes,
+  msgIndex,
+  pinnedBlockIds,
+  onPinBlock,
 }: {
   entry: NormalizedMessage;
   allThinkingExpanded: boolean;
@@ -920,6 +982,9 @@ function MessageRenderer({
   toolInputsMap?: Map<string, Record<string, unknown>>;
   onNavigateSession?: (key: string) => void;
   hiddenBlockTypes?: Set<string>;
+  msgIndex?: number;
+  pinnedBlockIds?: Set<string>;
+  onPinBlock?: (blockId: string, blockType: string, preview: string) => void;
 }) {
   const t = entry.type;
 
@@ -944,7 +1009,12 @@ function MessageRenderer({
 
   if (role === "user") {
     if (hiddenBlockTypes?.has("user-msg")) return null;
-    return <UserMessage content={msg.content} time={time} showTime={showTime} />;
+    const blockId = `user-${msgIndex ?? 0}`;
+    return <UserMessage
+      content={msg.content} time={time} showTime={showTime}
+      isPinned={pinnedBlockIds?.has(blockId)}
+      onPin={onPinBlock ? () => onPinBlock(blockId, "user-msg", String(msg.content).slice(0, 80)) : undefined}
+    />;
   }
   if (role === "assistant")
     return (
@@ -958,11 +1028,15 @@ function MessageRenderer({
         autoExpand={settings.autoExpandToolCalls}
         hiddenBlockTypes={hiddenBlockTypes}
         hideText={hiddenBlockTypes?.has("asst-text")}
+        msgIndex={msgIndex}
+        pinnedBlockIds={pinnedBlockIds}
+        onPinBlock={onPinBlock}
       />
     );
   if (role === "toolResult") {
     const catKey = toolColorKey(msg.toolName || "") as BlockCategory;
     if (catKey && hiddenBlockTypes?.has(catKey)) return null;
+    const blockId = `result-${msgIndex ?? 0}`;
     return (
       <ToolResultBlock
         msg={msg}
@@ -973,6 +1047,8 @@ function MessageRenderer({
         globalExpand={catKey && blockExpansion ? blockExpansion[catKey] : undefined}
         toolInputsMap={toolInputsMap}
         onNavigateSession={onNavigateSession}
+        isPinned={pinnedBlockIds?.has(blockId)}
+        onPin={onPinBlock ? () => onPinBlock(blockId, catKey || "exec", msg.toolName || "tool result") : undefined}
       />
     );
   }

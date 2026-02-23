@@ -8,6 +8,13 @@ export type BlockCategory = "thinking" | "exec" | "file" | "web" | "browser" | "
 
 export type BlockExpansion = Record<BlockCategory, boolean>;
 
+export interface PinnedBlock {
+  blockId: string;    // unique within session, e.g. "thinking-5-0", "tool-5-2", "user-3"
+  msgIndex: number;   // which message in the conversation
+  blockType: string;  // "thinking" | "exec" | "file" | "web" | "browser" | "msg" | "agent" | "user-msg" | "asst-text"
+  preview: string;    // truncated content for the strip
+}
+
 interface AppState {
   sessions: SessionInfo[];
   filteredSessions: SessionInfo[];
@@ -31,11 +38,11 @@ interface AppState {
   settings: AppSettings;
   scrollTargetIndex: number | null;
   archivedSessionIds: Set<string>;
-  sidebarTab: "browse" | "starred" | "pinned" | "archived" | "analytics";
+  sidebarTab: "browse" | "favourites" | "pinned" | "archived" | "analytics";
   activeSessions: Set<string>;
   hiddenBlockTypes: Set<BlockCategory>;
   starredSessionIds: Set<string>;
-  pinnedMessages: Record<string, number[]>;
+  pinnedBlocks: Record<string, PinnedBlock[]>;
 
   setSessions: (sessions: SessionInfo[]) => void;
   setCurrentSession: (id: string | null) => void;
@@ -61,11 +68,11 @@ interface AppState {
   setScrollTargetIndex: (idx: number | null) => void;
   archiveSession: (sessionId: string) => void;
   unarchiveSession: (sessionId: string) => void;
-  setSidebarTab: (tab: "browse" | "starred" | "pinned" | "archived" | "analytics") => void;
+  setSidebarTab: (tab: "browse" | "favourites" | "pinned" | "archived" | "analytics") => void;
   setActiveSessions: (ids: Set<string>) => void;
   toggleHiddenBlockType: (cat: BlockCategory) => void;
   toggleStarred: (sessionId: string) => void;
-  togglePinMessage: (sessionId: string, msgIndex: number) => void;
+  togglePinBlock: (sessionId: string, block: PinnedBlock) => void;
   initFromLocalStorage: () => void;
   applyFilter: () => void;
 }
@@ -173,14 +180,14 @@ function saveStarred(ids: Set<string>) {
   try { localStorage.setItem("llm-deep-trace-starred", JSON.stringify([...ids])); } catch { /* ignore */ }
 }
 
-function loadPinnedMessages(): Record<string, number[]> {
+function loadPinnedBlocks(): Record<string, PinnedBlock[]> {
   try {
     const raw = localStorage.getItem("llm-deep-trace-pinned");
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
   return {};
 }
-function savePinnedMessages(pins: Record<string, number[]>) {
+function savePinnedBlocks(pins: Record<string, PinnedBlock[]>) {
   try { localStorage.setItem("llm-deep-trace-pinned", JSON.stringify(pins)); } catch { /* ignore */ }
 }
 
@@ -274,7 +281,7 @@ export const useStore = create<AppState>((set, get) => ({
   activeSessions: new Set<string>(),
   hiddenBlockTypes: new Set<BlockCategory>(),
   starredSessionIds: new Set<string>(),
-  pinnedMessages: {},
+  pinnedBlocks: {},
 
   setSessions: (sessions) => {
     sessions.sort((a, b) => {
@@ -468,14 +475,14 @@ export const useStore = create<AppState>((set, get) => ({
     saveStarred(next);
     get().applyFilter();
   },
-  togglePinMessage: (sessionId, msgIndex) => {
-    const current = get().pinnedMessages;
+  togglePinBlock: (sessionId, block) => {
+    const current = get().pinnedBlocks;
     const arr = [...(current[sessionId] || [])];
-    const idx = arr.indexOf(msgIndex);
-    if (idx >= 0) arr.splice(idx, 1); else arr.push(msgIndex);
+    const idx = arr.findIndex(b => b.blockId === block.blockId);
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(block);
     const next = { ...current, [sessionId]: arr };
-    set({ pinnedMessages: next });
-    savePinnedMessages(next);
+    set({ pinnedBlocks: next });
+    savePinnedBlocks(next);
     get().applyFilter();
   },
 
@@ -489,12 +496,12 @@ export const useStore = create<AppState>((set, get) => ({
       archivedSessionIds: loadArchivedIds(),
       hiddenBlockTypes: loadHiddenBlockTypes(),
       starredSessionIds: loadStarred(),
-      pinnedMessages: loadPinnedMessages(),
+      pinnedBlocks: loadPinnedBlocks(),
     });
   },
 
   applyFilter: () => {
-    const { sessions, searchQuery, sourceFilters, archivedSessionIds, sidebarTab, starredSessionIds, pinnedMessages } = get();
+    const { sessions, searchQuery, sourceFilters, archivedSessionIds, sidebarTab, starredSessionIds, pinnedBlocks } = get();
     const q = searchQuery.toLowerCase().trim();
     const filtered = sessions.filter((s) => {
       const src = s.source || "kova";
@@ -502,8 +509,8 @@ export const useStore = create<AppState>((set, get) => ({
       const isArchived = archivedSessionIds.has(s.sessionId);
       // Tab-specific visibility rules
       if (sidebarTab === "archived") { if (!isArchived) return false; }
-      else if (sidebarTab === "starred") { if (!starredSessionIds.has(s.sessionId)) return false; }
-      else if (sidebarTab === "pinned") { if (!(pinnedMessages[s.sessionId]?.length > 0)) return false; }
+      else if (sidebarTab === "favourites") { if (!starredSessionIds.has(s.sessionId)) return false; }
+      else if (sidebarTab === "pinned") { if (!(pinnedBlocks[s.sessionId]?.length > 0)) return false; }
       else { if (isArchived) return false; } // browse
       if (!q) return true;
       const label = (s.label || s.title || s.key || "").toLowerCase();
