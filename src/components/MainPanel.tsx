@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useStore, BlockCategory } from "@/lib/store";
 import { BlockColors, NormalizedMessage, SessionInfo } from "@/lib/types";
 import { sessionLabel, relativeTime, channelIcon, copyToClipboard, extractText, extractResultText } from "@/lib/client-utils";
@@ -149,6 +149,8 @@ function MsgSearchBar({
 }
 
 const BLOCK_PILLS: { category: BlockCategory; label: string }[] = [
+  { category: "user-msg", label: "user" },
+  { category: "asst-text", label: "assistant" },
   { category: "thinking", label: "thinking" },
   { category: "exec", label: "exec" },
   { category: "file", label: "edit / write" },
@@ -174,6 +176,11 @@ function BlockToggleToolbar({
   onToggleHidden: (category: BlockCategory) => void;
 }) {
   const handleCycle = (category: BlockCategory) => {
+    // conversation-turn categories: two-state (visible ↔ hidden)
+    if (category === "user-msg" || category === "asst-text") {
+      onToggleHidden(category);
+      return;
+    }
     const hidden = hiddenBlockTypes.has(category);
     const expanded = blockExpansion[category];
     if (hidden) {
@@ -193,20 +200,28 @@ function BlockToggleToolbar({
   return (
     <div className="block-toggle-strip">
       <span className="block-strip-label">blocks</span>
-      {BLOCK_PILLS.map(({ category, label }) => {
+      {BLOCK_PILLS.map(({ category, label }, pillIdx) => {
+        // Visual separator between conversation pills and tool block pills
+        const separator = pillIdx === 2 ? <span key="sep" className="block-pill-sep" /> : null;
         const hidden = hiddenBlockTypes.has(category);
         const expanded = !hidden && blockExpansion[category];
         const color = blockColors[category] || "#888899";
         // state: "hidden" | "collapsed" | "expanded"
         const state = hidden ? "hidden" : expanded ? "expanded" : "collapsed";
-        const titles = {
+        const isTwoState = category === "user-msg" || category === "asst-text";
+        const titles = isTwoState ? {
+          collapsed: `${label} — visible. Click to hide.`,
+          expanded:  `${label} — visible. Click to hide.`,
+          hidden:    `${label} — hidden. Click to show.`,
+        } : {
           collapsed: `${label} — visible, collapsed. Click to expand.`,
           expanded:  `${label} — visible, expanded. Click to hide.`,
           hidden:    `${label} — hidden. Click to show.`,
         };
         return (
+          <React.Fragment key={category}>
+            {separator}
           <button
-            key={category}
             className={`block-pill block-pill-tri state-${state}`}
             style={
               state === "expanded"
@@ -225,6 +240,7 @@ function BlockToggleToolbar({
             )}
             <span style={state === "hidden" ? { opacity: 0.45 } : undefined}>{label}</span>
           </button>
+          </React.Fragment>
         );
       })}
     </div>
@@ -272,6 +288,154 @@ function PinnedStrip({ pinnedIndices, messages, onUnpin, onScrollTo }: {
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Export helpers ──
+function entryToMarkdown(entry: NormalizedMessage, hiddenBlockTypes: Set<BlockCategory>): string {
+  const msg = entry.message;
+  if (!msg) return "";
+  const role = msg.role;
+  const content = msg.content;
+
+  if (role === "user") {
+    if (hiddenBlockTypes.has("user-msg")) return "";
+    const text = typeof content === "string" ? content
+      : Array.isArray(content) ? (content as unknown as Record<string, unknown>[])
+          .filter(b => b.type === "text").map(b => b.text as string).join("\n")
+      : "";
+    return `**User**\n\n${text}\n\n`;
+  }
+
+  if (role === "assistant") {
+    const lines: string[] = [];
+    if (Array.isArray(content)) {
+      for (const block of content as unknown as Record<string, unknown>[]) {
+        if (block.type === "thinking" && block.thinking) {
+          if (!hiddenBlockTypes.has("thinking")) {
+            lines.push(`> *thinking*\n>\n> ${String(block.thinking).replace(/\n/g, "\n> ")}\n`);
+          }
+        } else if (block.type === "text" && block.text) {
+          if (!hiddenBlockTypes.has("asst-text")) lines.push(String(block.text));
+        } else if (block.type === "tool_use" || block.type === "toolCall") {
+          const catKey = (() => {
+            const name = (block.name as string) || "";
+            if (/bash|exec|run_command/i.test(name)) return "exec";
+            if (/read|write|edit|str_replace|create_file/i.test(name)) return "file";
+            if (/web_search|brave|search/i.test(name)) return "web";
+            if (/web_fetch|fetch_page/i.test(name)) return "web";
+            if (/browser/i.test(name)) return "browser";
+            if (/message|telegram|send/i.test(name)) return "msg";
+            if (/task|spawn|sessions_spawn/i.test(name)) return "agent";
+            return null;
+          })() as BlockCategory | null;
+          if (!catKey || !hiddenBlockTypes.has(catKey)) {
+            const inputStr = JSON.stringify(block.input || {}, null, 2);
+            lines.push(`**Tool:** \`${block.name}\`\n\`\`\`json\n${inputStr}\n\`\`\``);
+          }
+        }
+      }
+    } else if (typeof content === "string") {
+      if (!hiddenBlockTypes.has("asst-text")) lines.push(content);
+    }
+    if (!lines.length) return "";
+    return `**Assistant**\n\n${lines.join("\n\n")}\n\n`;
+  }
+
+  if (role === "toolResult") {
+    const catKey = msg.toolName ? (() => {
+      const n = msg.toolName!;
+      if (/bash|exec/i.test(n)) return "exec";
+      if (/read|write|edit/i.test(n)) return "file";
+      if (/web|search/i.test(n)) return "web";
+      if (/browser/i.test(n)) return "browser";
+      if (/message|telegram/i.test(n)) return "msg";
+      if (/task|spawn/i.test(n)) return "agent";
+      return null;
+    })() as BlockCategory | null : null;
+    if (catKey && hiddenBlockTypes.has(catKey)) return "";
+    const text = typeof content === "string" ? content
+      : Array.isArray(content) ? (content as unknown as Record<string, unknown>[])
+          .filter(b => b.type === "text").map(b => b.text as string).join("\n")
+      : "";
+    return `> **Result** (${msg.toolName || "tool"})\n>\n> ${text.slice(0, 500).replace(/\n/g, "\n> ")}${text.length > 500 ? "\n> *[truncated]*" : ""}\n\n`;
+  }
+
+  return "";
+}
+
+function exportSession(messages: NormalizedMessage[], hiddenBlockTypes: Set<BlockCategory>, format: "markdown" | "json") {
+  if (format === "json") {
+    const visible = messages.filter(e => {
+      if (e.type === "compaction" || e.type === "model_change") return true;
+      const msg = e.message;
+      if (!msg) return false;
+      if (msg.role === "user" && hiddenBlockTypes.has("user-msg")) return false;
+      return true;
+    });
+    return JSON.stringify(visible, null, 2);
+  }
+  // markdown
+  const parts: string[] = [];
+  for (const entry of messages) {
+    if (entry.type === "compaction") { parts.push("---\n*[context compacted]*\n---\n\n"); continue; }
+    if (entry.type === "model_change") { parts.push(`---\n*[model: ${entry.modelId}]*\n\n`); continue; }
+    if (entry.type !== "message") continue;
+    const line = entryToMarkdown(entry, hiddenBlockTypes);
+    if (line) parts.push(line);
+  }
+  return parts.join("");
+}
+
+function ExportButton({ messages, hiddenBlockTypes }: { messages: NormalizedMessage[]; hiddenBlockTypes: Set<BlockCategory> }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const doExport = (format: "markdown" | "json") => {
+    const text = exportSession(messages, hiddenBlockTypes, format);
+    navigator.clipboard.writeText(text).catch(() => {});
+    setOpen(false);
+  };
+
+  return (
+    <div className="export-btn-wrap" ref={ref}>
+      <button className="panel-icon-btn" title="Export visible session" onClick={() => setOpen(!open)}>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M8 2v8M5 7l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M2 11v1.5A1.5 1.5 0 003.5 14h9a1.5 1.5 0 001.5-1.5V11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="export-dropdown">
+          <button className="export-option" onClick={() => doExport("markdown")}>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M2 3h12M2 7h8M2 11h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+            Copy as Markdown
+          </button>
+          <button className="export-option" onClick={() => doExport("json")}>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M4 2H2.5A1.5 1.5 0 001 3.5v2A1.5 1.5 0 002.5 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              <path d="M4 14H2.5A1.5 1.5 0 011 12.5v-2A1.5 1.5 0 012.5 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              <path d="M12 2h1.5A1.5 1.5 0 0115 3.5v2A1.5 1.5 0 0113.5 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              <path d="M12 14h1.5A1.5 1.5 0 0015 12.5v-2A1.5 1.5 0 0013.5 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              <circle cx="8" cy="8" r="1.2" fill="currentColor"/>
+            </svg>
+            Copy as JSON
+          </button>
+          <div className="export-note">respects current block filters</div>
         </div>
       )}
     </div>
@@ -871,6 +1035,7 @@ export default function MainPanel() {
           >
             search &#8984;F
           </button>
+          <ExportButton messages={currentMessages} hiddenBlockTypes={hiddenBlockTypes} />
         </div>
       </div>
 
