@@ -2689,6 +2689,7 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   flex-direction: column;
   background: var(--bg);
   min-width: 0;
+  min-height: 0;  /* allows flex child to shrink + scroll */
   overflow-y: auto;
 }
 

@@ -210,7 +210,9 @@ export default function App() {
   return (
     <div className="app-shell">
       <Sidebar />
-      {sidebarTab === "analytics" ? <AnalyticsDashboard /> : <MainPanel />}
+      {sidebarTab === "analytics"
+        ? <div className="analytics-dashboard"><AnalyticsDashboard /></div>
+        : <MainPanel />}
       {/* Right pane tray handle */}
       <div
         className={`tray-handle ${treePanelOpen ? "open" : ""}`}
