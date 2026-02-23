@@ -2942,7 +2942,14 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
 }
 
 .setup-logo {
-  opacity: 0.9;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 28px rgba(155, 114, 239, 0.45)) drop-shadow(0 0 8px rgba(155, 114, 239, 0.2));
+  animation: setup-logo-float 4s ease-in-out infinite;
+}
+
+@keyframes setup-logo-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-6px); }
 }
 
 .setup-title {
