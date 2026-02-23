@@ -201,6 +201,45 @@ export function normalizeKimiEntry(e: RawEntry): NormalizedMessage | null {
   };
 }
 
+/** Normalize Kimi context.jsonl entries — direct {role, content} with no `type` wrapper */
+export function normalizeKimiDirectEntry(e: RawEntry): NormalizedMessage | null {
+  const raw = e as unknown as Record<string, unknown>;
+  const role = raw.role as string;
+  // Skip internal entries
+  if (!role || role.startsWith("_")) return null;
+  if (role !== "user" && role !== "assistant") return null;
+
+  const content = raw.content;
+  const nc: Record<string, unknown>[] = [];
+
+  if (typeof content === "string") {
+    if (content.trim()) nc.push({ type: "text", text: content });
+  } else if (Array.isArray(content)) {
+    for (const block of content as Record<string, unknown>[]) {
+      if (!block) continue;
+      // Kimi think block: {type:"think", think:"...", encrypted:null}
+      if (block.type === "think" && block.think) {
+        nc.push({ type: "thinking", thinking: block.think });
+      } else if (block.type === "text" && block.text) {
+        nc.push({ type: "text", text: block.text });
+      } else if (typeof (block as unknown) === "string" && (block as unknown as string).trim()) {
+        nc.push({ type: "text", text: block as unknown as string });
+      }
+    }
+  }
+
+  if (nc.length === 0) return null;
+
+  return {
+    type: "message",
+    timestamp: (raw.timestamp as string) || undefined,
+    message: {
+      role,
+      content: nc as unknown as string,
+    },
+  };
+}
+
 /** Normalize simple message entries (gemini, opencode, copilot, factory) */
 export function normalizeSimpleEntry(e: RawEntry): NormalizedMessage | null {
   const msg = (e.message || e) as Record<string, unknown>;
@@ -267,13 +306,23 @@ export function normalizeEntries(entries: RawEntry[]): NormalizedMessage[] {
         break;
       }
     }
+    // Kimi context.jsonl: direct {role, content} with no `type` field
+    if (!e.type) {
+      const role = (e as unknown as Record<string, unknown>).role as string;
+      if (role === "user" || role === "assistant") {
+        detectedProvider = "kimi-direct";
+        break;
+      }
+    }
   }
 
   for (const e of entries) {
     const t = e.type;
     let norm: NormalizedMessage | NormalizedMessage[] | null = null;
 
-    if (detectedProvider === "kimi" && (t === "user" || t === "assistant" || t === "message")) {
+    if (detectedProvider === "kimi-direct") {
+      norm = normalizeKimiDirectEntry(e);
+    } else if (detectedProvider === "kimi" && (t === "user" || t === "assistant" || t === "message")) {
       norm = normalizeKimiEntry(e);
     } else if (detectedProvider === "simple" && (t === "user" || t === "assistant" || t === "message" || t === "model")) {
       norm = normalizeSimpleEntry(e);

@@ -376,60 +376,73 @@ export function listCodexSessions(): SessionInfo[] {
 // ── Kimi ──
 
 export function listKimiSessions(): SessionInfo[] {
+  // Kimi structure: ~/.kimi/sessions/<project-hash>/<session-uuid>/context.jsonl
   const kimiDir = path.join(HOME, ".kimi", "sessions");
   const sessions: SessionInfo[] = [];
   if (!fs.existsSync(kimiDir)) return sessions;
 
   try {
-    for (const f of fs.readdirSync(kimiDir)) {
-      const fullPath = path.join(kimiDir, f);
-      if (!f.endsWith(".jsonl")) continue;
+    for (const projectHash of fs.readdirSync(kimiDir)) {
+      const projectDir = path.join(kimiDir, projectHash);
       try {
-        const entries = parseJsonl(fullPath);
-        let updatedAt = 0;
-        try { updatedAt = Math.floor(fs.statSync(fullPath).mtimeMs); } catch { /* */ }
+        if (!fs.statSync(projectDir).isDirectory()) continue;
+      } catch { continue; }
 
-        let preview = "";
-        let msgCount = 0;
-        for (const e of entries) {
-          if (e.type === "message" || e.type === "user" || e.type === "assistant") {
-            msgCount++;
-            const msg = (e.message || e) as Record<string, unknown>;
-            const role = (msg.role as string) || e.type;
-            if (role === "user" && !preview) {
-              const content = msg.content;
-              if (typeof content === "string") {
-                preview = content.slice(0, 120);
-              } else if (Array.isArray(content)) {
-                for (const block of content as Record<string, unknown>[]) {
-                  if (block.type === "text" && block.text) {
-                    preview = (block.text as string).slice(0, 120);
-                    break;
+      try {
+        for (const sessionUuid of fs.readdirSync(projectDir)) {
+          const sessionDir = path.join(projectDir, sessionUuid);
+          try {
+            if (!fs.statSync(sessionDir).isDirectory()) continue;
+          } catch { continue; }
+
+          const contextFile = path.join(sessionDir, "context.jsonl");
+          if (!fs.existsSync(contextFile)) continue;
+
+          try {
+            const entries = parseJsonl(contextFile);
+            let updatedAt = 0;
+            try { updatedAt = Math.floor(fs.statSync(contextFile).mtimeMs); } catch { /* */ }
+
+            let preview = "";
+            let msgCount = 0;
+            for (const e of entries) {
+              const role = (e as Record<string, unknown>).role as string;
+              if (!role || role.startsWith("_")) continue;
+              msgCount++;
+              if (role === "user" && !preview) {
+                const content = (e as Record<string, unknown>).content;
+                if (typeof content === "string" && content.trim()) {
+                  preview = content.slice(0, 120);
+                } else if (Array.isArray(content)) {
+                  for (const block of content as Record<string, unknown>[]) {
+                    if (block.type === "text" && block.text) {
+                      preview = (block.text as string).slice(0, 120);
+                      break;
+                    }
                   }
                 }
               }
             }
-          }
-        }
 
-        const sessionId = path.basename(f, ".jsonl");
-        sessions.push({
-          sessionId,
-          key: sessionId,
-          label: preview ? preview.slice(0, 60) : sessionId.slice(0, 14),
-          lastUpdated: updatedAt,
-          channel: "kimi",
-          chatType: "direct",
-          messageCount: msgCount,
-          preview,
-          isActive: true,
-          isDeleted: false,
-          isSubagent: false,
-          compactionCount: 0,
-          source: "kimi",
-          filePath: fullPath,
-        });
-      } catch { /* skip bad files */ }
+            sessions.push({
+              sessionId: sessionUuid,
+              key: sessionUuid,
+              label: preview ? preview.slice(0, 60) : sessionUuid.slice(0, 14),
+              lastUpdated: updatedAt,
+              channel: "kimi",
+              chatType: "direct",
+              messageCount: msgCount,
+              preview,
+              isActive: true,
+              isDeleted: false,
+              isSubagent: false,
+              compactionCount: 0,
+              source: "kimi",
+              filePath: contextFile,
+            });
+          } catch { /* skip bad session */ }
+        }
+      } catch { /* skip unreadable project dir */ }
     }
   } catch { /* dir not readable */ }
 
