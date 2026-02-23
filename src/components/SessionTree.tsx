@@ -26,11 +26,13 @@ interface TurnInfo {
 
 interface SubagentInfo {
   label: string;
+  fullLabel: string;
   agentKey: string;
 }
 
 interface RootNodeData {
   label: string;
+  fullLabel: string;
   [key: string]: unknown;
 }
 
@@ -44,6 +46,7 @@ interface TurnNodeData {
 
 interface SubagentNodeData {
   label: string;
+  fullLabel: string;
   agentKey: string;
   [key: string]: unknown;
 }
@@ -111,7 +114,8 @@ function buildTurns(messages: NormalizedMessage[]): TurnInfo[] {
               (input.name as string) ||
               (input.prompt as string) ||
               "subagent";
-            const label = desc.slice(0, 30);
+            const fullDesc = desc.trim();
+            const label = fullDesc.slice(0, 30);
 
             // Try to extract agentId from the tool result
             let agentKey = "";
@@ -137,7 +141,7 @@ function buildTurns(messages: NormalizedMessage[]): TurnInfo[] {
                 block.id ||
                 "";
             }
-            subagents.push({ label, agentKey });
+            subagents.push({ label, fullLabel: fullDesc, agentKey });
           }
         }
       }
@@ -163,7 +167,7 @@ function filterTurns(turns: TurnInfo[]): TurnInfo[] {
 function RootNodeComponent({ data }: NodeProps<Node<RootNodeData>>) {
   return (
     <>
-      <div className="tree-node-card tree-node-root">
+      <div className="tree-node-card tree-node-root" title={data.fullLabel || data.label}>
         <div className="tree-node-top">
           <span className="tree-node-title">{data.label}</span>
         </div>
@@ -181,7 +185,7 @@ function TurnNodeComponent({ data }: NodeProps<Node<TurnNodeData>>) {
   return (
     <>
       <Handle type="target" position={Position.Top} className="tree-handle" />
-      <div className="tree-node-card tree-node-turn">
+      <div className="tree-node-card tree-node-turn" title={data.preview}>
         <div className="tree-node-top">
           <span className="tree-turn-label">Turn {data.turnIndex}</span>
         </div>
@@ -209,7 +213,7 @@ function SubagentNodeComponent({ data }: NodeProps<Node<SubagentNodeData>>) {
   return (
     <>
       <Handle type="target" position={Position.Left} className="tree-handle" />
-      <div className="tree-node-card tree-node-subagent">
+      <div className="tree-node-card tree-node-subagent" title={data.fullLabel || data.label}>
         <div className="tree-node-top">
           <span className="tree-node-title">{data.label}</span>
           <span className="tree-node-badge">subagent</span>
@@ -245,7 +249,7 @@ function layoutTurns(
     id: "root",
     type: "rootNode",
     position: { x: TURN_X, y: ROOT_Y },
-    data: { label },
+    data: { label: label.slice(0, 30), fullLabel: label },
   });
 
   let y = 70;
@@ -287,7 +291,7 @@ function layoutTurns(
         id: subId,
         type: "subagentNode",
         position: { x: SUBAGENT_X, y: subY },
-        data: { label: sub.label, agentKey: sub.agentKey },
+        data: { label: sub.label, fullLabel: sub.fullLabel || sub.label, agentKey: sub.agentKey },
       });
 
       edges.push({
@@ -365,8 +369,10 @@ function InnerFlow({
       // Attach uncovered children to the last turn as a group
       const lastTurn = raw[raw.length - 1];
       for (const s of uncovered) {
+        const fullSub = s.label || s.sessionId;
         lastTurn.subagents.push({
-          label: (s.label || s.sessionId).slice(0, 30),
+          label: fullSub.slice(0, 30),
+          fullLabel: fullSub,
           agentKey: s.sessionId,
         });
       }

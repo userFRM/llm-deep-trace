@@ -69,6 +69,7 @@ html, body {
   background: var(--surface);
   border-right: 1px solid var(--border);
   flex-shrink: 0;
+  user-select: none;
 }
 
 .sidebar-header {
@@ -183,6 +184,7 @@ html, body {
   font-size: 12px;
   outline: none;
   transition: border-color 0.15s;
+  user-select: text;
 }
 
 .search-input:focus {
@@ -268,6 +270,7 @@ html, body {
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   transition: background 0.12s;
+  user-select: none;
 }
 
 .session-item:hover {
@@ -348,6 +351,10 @@ html, body {
 
 .session-dot.inactive { background: var(--text-3); }
 .session-dot.subagent { background: var(--accent); }
+
+.session-label, .session-time, .session-meta, .session-preview, .session-source {
+  user-select: none;
+}
 
 .session-label {
   flex: 1;
