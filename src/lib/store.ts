@@ -34,6 +34,8 @@ interface AppState {
   sidebarTab: "browse" | "archived" | "analytics";
   activeSessions: Set<string>;
   hiddenBlockTypes: Set<BlockCategory>;
+  starredSessionIds: Set<string>;
+  pinnedMessages: Record<string, number[]>;
 
   setSessions: (sessions: SessionInfo[]) => void;
   setCurrentSession: (id: string | null) => void;
@@ -62,6 +64,8 @@ interface AppState {
   setSidebarTab: (tab: "browse" | "archived" | "analytics") => void;
   setActiveSessions: (ids: Set<string>) => void;
   toggleHiddenBlockType: (cat: BlockCategory) => void;
+  toggleStarred: (sessionId: string) => void;
+  togglePinMessage: (sessionId: string, msgIndex: number) => void;
   initFromLocalStorage: () => void;
   applyFilter: () => void;
 }
@@ -158,6 +162,28 @@ function saveHiddenBlockTypes(types: Set<BlockCategory>) {
   } catch { /* ignore */ }
 }
 
+function loadStarred(): Set<string> {
+  try {
+    const raw = localStorage.getItem("llm-deep-trace-starred");
+    if (raw) return new Set(JSON.parse(raw));
+  } catch { /* ignore */ }
+  return new Set();
+}
+function saveStarred(ids: Set<string>) {
+  try { localStorage.setItem("llm-deep-trace-starred", JSON.stringify([...ids])); } catch { /* ignore */ }
+}
+
+function loadPinnedMessages(): Record<string, number[]> {
+  try {
+    const raw = localStorage.getItem("llm-deep-trace-pinned");
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return {};
+}
+function savePinnedMessages(pins: Record<string, number[]>) {
+  try { localStorage.setItem("llm-deep-trace-pinned", JSON.stringify(pins)); } catch { /* ignore */ }
+}
+
 function buildGroupedSessions(list: SessionInfo[]): SessionInfo[] {
   const childrenOf = new Map<string, SessionInfo[]>();
   const childIds = new Set<string>();
@@ -247,6 +273,8 @@ export const useStore = create<AppState>((set, get) => ({
   sidebarTab: "browse",
   activeSessions: new Set<string>(),
   hiddenBlockTypes: new Set<BlockCategory>(),
+  starredSessionIds: new Set<string>(),
+  pinnedMessages: {},
 
   setSessions: (sessions) => {
     sessions.sort((a, b) => {
@@ -433,6 +461,21 @@ export const useStore = create<AppState>((set, get) => ({
     set({ hiddenBlockTypes: next });
     saveHiddenBlockTypes(next);
   },
+  toggleStarred: (sessionId) => {
+    const next = new Set(get().starredSessionIds);
+    if (next.has(sessionId)) next.delete(sessionId); else next.add(sessionId);
+    set({ starredSessionIds: next });
+    saveStarred(next);
+  },
+  togglePinMessage: (sessionId, msgIndex) => {
+    const current = get().pinnedMessages;
+    const arr = [...(current[sessionId] || [])];
+    const idx = arr.indexOf(msgIndex);
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(msgIndex);
+    const next = { ...current, [sessionId]: arr };
+    set({ pinnedMessages: next });
+    savePinnedMessages(next);
+  },
 
   initFromLocalStorage: () => {
     set({
@@ -443,6 +486,8 @@ export const useStore = create<AppState>((set, get) => ({
       treePanelWidth: loadTreePanelWidth(),
       archivedSessionIds: loadArchivedIds(),
       hiddenBlockTypes: loadHiddenBlockTypes(),
+      starredSessionIds: loadStarred(),
+      pinnedMessages: loadPinnedMessages(),
     });
   },
 

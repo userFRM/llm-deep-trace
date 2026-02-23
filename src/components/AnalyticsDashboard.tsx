@@ -4,11 +4,15 @@ import { useEffect, useState } from "react";
 
 interface AnalyticsData {
   sessionsPerDay: { date: string; count: number; byProvider: Record<string, number> }[];
-  providerBreakdown: { provider: string; count: number; pct: number }[];
+  messagesPerDay: { date: string; count: number; byProvider: Record<string, number> }[];
+  providerBreakdown: { provider: string; count: number; sessions: number; messages: number; pct: number }[];
   topTools: { name: string; count: number }[];
   tokenTotals: { inputTokens: number; outputTokens: number; avgPerSession: number };
   sessionLengthDist: { bucket: string; count: number }[];
   totalSessions: number;
+  totalMessages: number;
+  avgSessionMessages: number;
+  hourOfDay: number[][];
 }
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -25,320 +29,365 @@ const PROVIDER_COLORS: Record<string, string> = {
   cursor: "#6366F1",
 };
 
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 function fmtNum(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
   return String(n);
 }
 
-// ── Provider legend (shown at top of analytics) ──
-function ProviderLegend({ providers }: { providers: string[] }) {
-  if (providers.length === 0) return null;
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return String(n);
+}
+
+// ── Stat card ────────────────────────────────────────────
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="analytics-legend">
-      {providers.map((p) => (
-        <span key={p} className="analytics-legend-item">
-          <span className="analytics-legend-dot" style={{ background: PROVIDER_COLORS[p] || "#71717A" }} />
-          {p}
-        </span>
+    <div className="stat-card">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+      {sub && <div className="stat-sub">{sub}</div>}
+    </div>
+  );
+}
+
+// ── Stacked bar chart (sessions or messages per day) ─────
+function StackedBarChart({
+  data,
+  providers,
+  chartH = 140,
+}: {
+  data: { date: string; count: number; byProvider: Record<string, number> }[];
+  providers: string[];
+  chartH?: number;
+}) {
+  const maxVal = Math.max(...data.map((d) => d.count), 1);
+  const barW = Math.max(4, Math.min(16, Math.floor(560 / data.length) - 2));
+  const gap = Math.max(1, Math.floor(barW / 4));
+  const totalW = data.length * (barW + gap);
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${totalW} ${chartH}`} preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}>
+      {data.map((day, i) => {
+        const x = i * (barW + gap);
+        let yOffset = chartH;
+        return (
+          <g key={day.date}>
+            {providers.map((p) => {
+              const v = day.byProvider[p] || 0;
+              if (v === 0) return null;
+              const h = Math.max(1, (v / maxVal) * chartH);
+              yOffset -= h;
+              return (
+                <rect
+                  key={p}
+                  x={x}
+                  y={yOffset}
+                  width={barW}
+                  height={h}
+                  fill={PROVIDER_COLORS[p] || "#555"}
+                  opacity={0.85}
+                >
+                  <title>{day.date} · {p}: {v}</title>
+                </rect>
+              );
+            })}
+            {/* unfilled portion */}
+            {day.count === 0 && (
+              <rect x={x} y={chartH - 2} width={barW} height={2} fill="var(--border)" opacity={0.4} />
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ── By-agent breakdown ───────────────────────────────────
+function AgentBreakdown({
+  data,
+  metric,
+}: {
+  data: { provider: string; count: number; sessions: number; messages: number; pct: number }[];
+  metric: "sessions" | "messages";
+}) {
+  const maxVal = Math.max(...data.map((d) => (metric === "sessions" ? d.sessions : d.messages)), 1);
+  return (
+    <div className="agent-breakdown">
+      {data.map((row) => {
+        const val = metric === "sessions" ? row.sessions : row.messages;
+        const pct = Math.round((val / maxVal) * 100);
+        const color = PROVIDER_COLORS[row.provider] || "#555";
+        return (
+          <div key={row.provider} className="agent-breakdown-row">
+            <span className="agent-breakdown-name" style={{ color }}>
+              {row.provider}
+            </span>
+            <div className="agent-breakdown-bar-wrap">
+              <div
+                className="agent-breakdown-bar"
+                style={{ width: `${pct}%`, background: color }}
+              />
+            </div>
+            <span className="agent-breakdown-val">{fmtNum(val)}</span>
+            <span className="agent-breakdown-pct">{Math.round((val / maxVal) * 100)}%</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Time-of-day heatmap ───────────────────────────────────
+function HeatmapGrid({ data }: { data: number[][] }) {
+  // data[weekday 0-6][hour 0-23]
+  const maxVal = Math.max(...data.flat(), 1);
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  return (
+    <div className="heatmap-wrap">
+      <div className="heatmap-hours-row">
+        <div className="heatmap-day-label" />
+        {hours.map((h) => (
+          <div key={h} className="heatmap-hour-label">
+            {h % 6 === 0 ? `${h}h` : ""}
+          </div>
+        ))}
+      </div>
+      {WEEKDAYS.map((day, wi) => (
+        <div key={day} className="heatmap-row">
+          <div className="heatmap-day-label">{day}</div>
+          {hours.map((h) => {
+            const val = data[wi][h] || 0;
+            const intensity = val / maxVal;
+            return (
+              <div
+                key={h}
+                className="heatmap-cell"
+                style={{
+                  background: val === 0
+                    ? "var(--raised)"
+                    : `rgba(155, 114, 239, ${0.12 + intensity * 0.88})`,
+                }}
+                title={`${day} ${h}:00 — ${val} session${val !== 1 ? "s" : ""}`}
+              />
+            );
+          })}
+        </div>
       ))}
     </div>
   );
 }
 
-// ── Sessions per day — stacked bar chart ──
-function SessionsPerDayChart({ data }: { data: { date: string; count: number; byProvider: Record<string, number> }[] }) {
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
-  const barW = 16;
-  const gap = 4;
-  const chartW = data.length * (barW + gap);
-  const chartH = 140;
-  const padTop = 20;
-  const padBot = 30;
-
-  // Determine which providers appear in the data
-  const providerSet = new Set<string>();
-  data.forEach((d) => Object.keys(d.byProvider).forEach((p) => { if (d.byProvider[p] > 0) providerSet.add(p); }));
-  const providers = Array.from(providerSet);
-
-  return (
-    <div className="analytics-section">
-      <h3 className="analytics-section-title">Sessions per day</h3>
-      <ProviderLegend providers={providers} />
-      <div className="analytics-chart-wrap">
-        <svg
-          width={chartW}
-          height={chartH + padTop + padBot}
-          viewBox={`0 0 ${chartW} ${chartH + padTop + padBot}`}
-          className="analytics-svg"
-        >
-          {data.map((d, i) => {
-            const x = i * (barW + gap);
-            const showLabel = i % 5 === 0 || i === data.length - 1;
-            // Build stacked segments bottom-up
-            let stackY = padTop + chartH; // start at baseline
-            const segments: { y: number; h: number; color: string; provider: string }[] = [];
-
-            if (d.count > 0) {
-              for (const p of providers) {
-                const pCount = d.byProvider[p] || 0;
-                if (pCount === 0) continue;
-                const segH = (pCount / maxCount) * chartH;
-                stackY -= segH;
-                segments.push({ y: stackY, h: segH, color: PROVIDER_COLORS[p] || "#71717A", provider: p });
-              }
-              // Any remaining count from providers not in legend
-              const covered = providers.reduce((s, p) => s + (d.byProvider[p] || 0), 0);
-              const remaining = d.count - covered;
-              if (remaining > 0) {
-                const segH = (remaining / maxCount) * chartH;
-                stackY -= segH;
-                segments.push({ y: stackY, h: segH, color: "#71717A", provider: "other" });
-              }
-            }
-
-            const totalBarTop = segments.length > 0 ? segments[segments.length - 1].y : padTop + chartH;
-
-            return (
-              <g key={d.date}>
-                {d.count === 0 && (
-                  <rect x={x} y={padTop + chartH - 2} width={barW} height={2} rx={1} fill="var(--border)" opacity={0.4} />
-                )}
-                {segments.map((seg, si) => (
-                  <rect key={si} x={x} y={seg.y} width={barW} height={Math.max(seg.h, 1)} rx={si === segments.length - 1 ? 2 : 0} fill={seg.color} opacity={0.88} />
-                ))}
-                {d.count > 0 && (
-                  <text x={x + barW / 2} y={totalBarTop - 4} textAnchor="middle" className="analytics-bar-label">
-                    {d.count}
-                  </text>
-                )}
-                {showLabel && (
-                  <text x={x + barW / 2} y={chartH + padTop + 16} textAnchor="middle" className="analytics-axis-label">
-                    {d.date.slice(5)}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-    </div>
-  );
-}
-
-// ── Provider breakdown horizontal bars ──
-function ProviderBreakdown({ data }: { data: { provider: string; count: number; pct: number }[] }) {
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
-
-  return (
-    <div className="analytics-section">
-      <h3 className="analytics-section-title">Provider breakdown</h3>
-      <div className="analytics-hbar-list">
-        {data.map((d) => {
-          const color = PROVIDER_COLORS[d.provider] || "#71717A";
-          const width = Math.max((d.count / maxCount) * 100, 2);
-          return (
-            <div key={d.provider} className="analytics-hbar-row">
-              <span className="analytics-hbar-label" style={{ color }}>
-                {d.provider}
-              </span>
-              <div className="analytics-hbar-track">
-                <div
-                  className="analytics-hbar-fill"
-                  style={{ width: `${width}%`, background: color }}
-                />
-              </div>
-              <span className="analytics-hbar-value">
-                {d.count} ({d.pct}%)
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Top tools ranked list ──
-function TopToolsList({ data }: { data: { name: string; count: number }[] }) {
-  if (data.length === 0) {
-    return (
-      <div className="analytics-section">
-        <h3 className="analytics-section-title">Top tools</h3>
-        <div className="analytics-empty">No tool usage data (Claude Code JSONL only)</div>
-      </div>
-    );
-  }
-
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
-
-  return (
-    <div className="analytics-section">
-      <h3 className="analytics-section-title">Top tools</h3>
-      <div className="analytics-tools-list">
-        {data.map((d, i) => {
-          const width = Math.max((d.count / maxCount) * 100, 2);
-          return (
-            <div key={d.name} className="analytics-tool-row">
-              <span className="analytics-tool-rank">{i + 1}.</span>
-              <span className="analytics-tool-name">{d.name}</span>
-              <div className="analytics-tool-bar-track">
-                <div
-                  className="analytics-tool-bar-fill"
-                  style={{ width: `${width}%` }}
-                />
-              </div>
-              <span className="analytics-tool-count">{d.count}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Token totals ──
-function TokenTotals({ data }: { data: { inputTokens: number; outputTokens: number; avgPerSession: number } }) {
-  return (
-    <div className="analytics-section">
-      <h3 className="analytics-section-title">Token totals</h3>
-      <div className="analytics-token-grid">
-        <div className="analytics-token-card">
-          <div className="analytics-token-value">{fmtNum(data.inputTokens)}</div>
-          <div className="analytics-token-label">input tokens</div>
-        </div>
-        <div className="analytics-token-card">
-          <div className="analytics-token-value">{fmtNum(data.outputTokens)}</div>
-          <div className="analytics-token-label">output tokens</div>
-        </div>
-        <div className="analytics-token-card">
-          <div className="analytics-token-value">{fmtNum(data.inputTokens + data.outputTokens)}</div>
-          <div className="analytics-token-label">total</div>
-        </div>
-        <div className="analytics-token-card">
-          <div className="analytics-token-value">{fmtNum(data.avgPerSession)}</div>
-          <div className="analytics-token-label">avg / session</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Session length distribution ──
-function SessionLengthDist({ data }: { data: { bucket: string; count: number }[] }) {
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
-  const barW = 60;
-  const gap = 12;
-  const chartW = data.length * (barW + gap);
-  const chartH = 100;
-  const padTop = 20;
-  const padBot = 30;
-
-  return (
-    <div className="analytics-section">
-      <h3 className="analytics-section-title">Session length distribution</h3>
-      <div className="analytics-chart-wrap">
-        <svg
-          width={chartW}
-          height={chartH + padTop + padBot}
-          viewBox={`0 0 ${chartW} ${chartH + padTop + padBot}`}
-          className="analytics-svg"
-        >
-          {data.map((d, i) => {
-            const barH = (d.count / maxCount) * chartH;
-            const x = i * (barW + gap);
-            const y = padTop + (chartH - barH);
-            return (
-              <g key={d.bucket}>
-                <rect
-                  x={x}
-                  y={y}
-                  width={barW}
-                  height={Math.max(barH, 1)}
-                  rx={3}
-                  fill="#9B72EF"
-                  opacity={d.count > 0 ? 0.85 : 0.15}
-                />
-                {d.count > 0 && (
-                  <text
-                    x={x + barW / 2}
-                    y={y - 4}
-                    textAnchor="middle"
-                    className="analytics-bar-label"
-                  >
-                    {d.count}
-                  </text>
-                )}
-                <text
-                  x={x + barW / 2}
-                  y={chartH + padTop + 16}
-                  textAnchor="middle"
-                  className="analytics-axis-label"
-                >
-                  {d.bucket}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-    </div>
-  );
-}
-
+// ── Main dashboard ───────────────────────────────────────
 export default function AnalyticsDashboard() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [period, setPeriod] = useState<"7d" | "30d" | "90d" | "all">("30d");
+  const [agentFilter, setAgentFilter] = useState("all");
+  const [metric, setMetric] = useState<"sessions" | "messages">("sessions");
 
   useEffect(() => {
-    fetch("/api/analytics")
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to fetch analytics");
-        return r.json();
-      })
-      .then((d) => {
-        setData(d);
-        setLoading(false);
-      })
-      .catch((e) => {
-        setError(e.message);
-        setLoading(false);
-      });
-  }, []);
+    setLoading(true);
+    setError(null);
+    fetch(`/api/analytics?period=${period}&agent=${agentFilter}`)
+      .then((r) => r.json())
+      .then((d: AnalyticsData) => { setData(d); setLoading(false); })
+      .catch((e) => { setError(String(e)); setLoading(false); });
+  }, [period, agentFilter]);
 
-  if (loading) {
-    return (
-      <div className="analytics-dashboard">
-        <div className="loading-state">
-          <div className="spinner" />
-          Loading analytics&hellip;
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="analytics-loading">Loading analytics…</div>;
+  if (error || !data) return <div className="analytics-loading">Failed to load analytics</div>;
 
-  if (error || !data) {
-    return (
-      <div className="analytics-dashboard">
-        <div className="analytics-empty">{error || "No data"}</div>
-      </div>
-    );
-  }
+  const providers = data.providerBreakdown.map((p) => p.provider);
+  const chartData = metric === "sessions" ? data.sessionsPerDay : data.messagesPerDay;
+
+  // X-axis date labels (show every Nth)
+  const dateLabels = (() => {
+    const n = chartData.length;
+    const step = n <= 10 ? 1 : n <= 30 ? 5 : 10;
+    return chartData.map((d, i) => (i % step === 0 || i === n - 1 ? d.date.slice(5) : ""));
+  })();
 
   return (
-    <div className="analytics-dashboard scroller">
-      <div className="analytics-header">
-        <h2 className="analytics-title">Analytics</h2>
-        <span className="analytics-total">{data.totalSessions} sessions total</span>
+    <div className="analytics-dash">
+
+      {/* Controls */}
+      <div className="analytics-controls">
+        <div className="analytics-filter-group">
+          {(["7d", "30d", "90d", "all"] as const).map((p) => (
+            <button
+              key={p}
+              className={`analytics-pill ${period === p ? "active" : ""}`}
+              onClick={() => setPeriod(p)}
+            >
+              {p === "all" ? "All time" : `Last ${p}`}
+            </button>
+          ))}
+        </div>
+        <select
+          className="analytics-agent-select"
+          value={agentFilter}
+          onChange={(e) => setAgentFilter(e.target.value)}
+        >
+          <option value="all">All agents</option>
+          {providers.map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </select>
       </div>
-      <div className="analytics-body">
-        <SessionsPerDayChart data={data.sessionsPerDay} />
-        <ProviderBreakdown data={data.providerBreakdown} />
-        <TopToolsList data={data.topTools} />
-        <TokenTotals data={data.tokenTotals} />
-        <SessionLengthDist data={data.sessionLengthDist} />
+
+      {/* Stat cards */}
+      <div className="stat-cards-row">
+        <StatCard
+          label="Sessions"
+          value={fmtNum(data.totalSessions)}
+          sub={`in ${period === "all" ? "all time" : `last ${period}`}`}
+        />
+        <StatCard
+          label="Messages"
+          value={fmtNum(data.totalMessages)}
+          sub="total across sessions"
+        />
+        <StatCard
+          label="Avg session"
+          value={`${data.avgSessionMessages} msgs`}
+          sub="messages per session"
+        />
+        <StatCard
+          label="Tokens used"
+          value={fmtTokens(data.tokenTotals.inputTokens + data.tokenTotals.outputTokens)}
+          sub={`${fmtTokens(data.tokenTotals.avgPerSession)} avg/session`}
+        />
       </div>
+
+      {/* Sessions / messages over time */}
+      <div className="analytics-section">
+        <div className="analytics-section-header">
+          <span className="analytics-section-title">Activity over time</span>
+          <div className="analytics-filter-group small">
+            <button
+              className={`analytics-pill ${metric === "sessions" ? "active" : ""}`}
+              onClick={() => setMetric("sessions")}
+            >sessions</button>
+            <button
+              className={`analytics-pill ${metric === "messages" ? "active" : ""}`}
+              onClick={() => setMetric("messages")}
+            >messages</button>
+          </div>
+        </div>
+        {/* Provider color legend */}
+        <div className="provider-legend">
+          {providers.filter((p) => data.providerBreakdown.find(r => r.provider === p)!.count > 0).map((p) => (
+            <span key={p} className="legend-item">
+              <span className="legend-dot" style={{ background: PROVIDER_COLORS[p] || "#555" }} />
+              {p}
+            </span>
+          ))}
+        </div>
+        <div className="chart-area">
+          <StackedBarChart data={chartData} providers={providers} />
+        </div>
+        {/* X-axis labels */}
+        <div className="chart-x-labels">
+          {dateLabels.map((label, i) => (
+            <span key={i} className="chart-x-label">{label}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* By-agent breakdown + time-of-day heatmap side by side */}
+      <div className="analytics-two-col">
+        <div className="analytics-section">
+          <div className="analytics-section-header">
+            <span className="analytics-section-title">By agent</span>
+          </div>
+          <AgentBreakdown data={data.providerBreakdown} metric={metric} />
+        </div>
+
+        <div className="analytics-section">
+          <div className="analytics-section-header">
+            <span className="analytics-section-title">Time of day</span>
+            <span className="analytics-section-hint">by session file time</span>
+          </div>
+          <HeatmapGrid data={data.hourOfDay} />
+        </div>
+      </div>
+
+      {/* Top tools */}
+      {data.topTools.length > 0 && (
+        <div className="analytics-section">
+          <div className="analytics-section-header">
+            <span className="analytics-section-title">Top tools (Claude Code)</span>
+          </div>
+          <div className="tool-bars">
+            {data.topTools.map((t, i) => {
+              const max = data.topTools[0].count || 1;
+              return (
+                <div key={t.name} className="tool-bar-row">
+                  <span className="tool-rank">{i + 1}</span>
+                  <span className="tool-name">{t.name}</span>
+                  <div className="tool-bar-wrap">
+                    <div className="tool-bar" style={{ width: `${(t.count / max) * 100}%` }} />
+                  </div>
+                  <span className="tool-count">{fmtNum(t.count)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Token totals */}
+      <div className="analytics-section">
+        <div className="analytics-section-header">
+          <span className="analytics-section-title">Token usage</span>
+        </div>
+        <div className="token-grid">
+          <div className="token-cell">
+            <span className="token-label">Input</span>
+            <span className="token-value">{fmtTokens(data.tokenTotals.inputTokens)}</span>
+          </div>
+          <div className="token-cell">
+            <span className="token-label">Output</span>
+            <span className="token-value">{fmtTokens(data.tokenTotals.outputTokens)}</span>
+          </div>
+          <div className="token-cell">
+            <span className="token-label">Total</span>
+            <span className="token-value">{fmtTokens(data.tokenTotals.inputTokens + data.tokenTotals.outputTokens)}</span>
+          </div>
+          <div className="token-cell">
+            <span className="token-label">Avg / session</span>
+            <span className="token-value">{fmtTokens(data.tokenTotals.avgPerSession)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Session length distribution */}
+      <div className="analytics-section">
+        <div className="analytics-section-header">
+          <span className="analytics-section-title">Session length distribution</span>
+          <span className="analytics-section-hint">by message count</span>
+        </div>
+        <div className="dist-bars">
+          {data.sessionLengthDist.map((row) => {
+            const max = Math.max(...data.sessionLengthDist.map((r) => r.count), 1);
+            return (
+              <div key={row.bucket} className="dist-row">
+                <span className="dist-label">{row.bucket}</span>
+                <div className="dist-bar-wrap">
+                  <div className="dist-bar" style={{ width: `${(row.count / max) * 100}%` }} />
+                </div>
+                <span className="dist-count">{row.count}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
     </div>
   );
 }
