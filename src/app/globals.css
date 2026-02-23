@@ -1800,6 +1800,24 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   color: #fff !important;
 }
 
+.block-pill-sep {
+  display: block;
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.block-pill-vis {
+  display: inline-flex;
+  align-items: center;
+}
+
+.block-pill-vis.hidden {
+  text-decoration: line-through;
+}
+
 /* ── Tree Panel Toggle Button ────── */
 
 .tree-panel-btn {

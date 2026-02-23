@@ -678,6 +678,7 @@ function AssistantMessage({
   blockExpansion,
   blockColors,
   autoExpand,
+  hiddenBlockTypes,
 }: {
   content: unknown;
   time: string;
@@ -686,6 +687,7 @@ function AssistantMessage({
   blockExpansion?: BlockExpansion;
   blockColors: BlockColors;
   autoExpand: boolean;
+  hiddenBlockTypes?: Set<string>;
 }) {
   if (!content) return null;
 
@@ -719,30 +721,36 @@ function AssistantMessage({
           textParts.push(<ImageThumbnail key={`img-t${i}-${idx}`} src={imgs[idx]} />);
         }
       } else if (block.type === "thinking" && block.thinking) {
-        textParts.push(
-          <ThinkingBlock
-            key={`th${i}`}
-            text={block.thinking as string}
-            forceOpen={allThinkingExpanded}
-            accentColor={blockColors.thinking}
-          />
-        );
+        if (!hiddenBlockTypes?.has("thinking")) {
+          textParts.push(
+            <ThinkingBlock
+              key={`th${i}`}
+              text={block.thinking as string}
+              forceOpen={allThinkingExpanded}
+              accentColor={blockColors.thinking}
+            />
+          );
+        }
       } else if (block.type === "tool_use") {
         const catKey = toolColorKey((block.name as string) || "") as BlockCategory;
-        toolCallParts.push(
-          <ToolCallBlock key={`tc${i}`} block={block} blockColors={blockColors} autoExpand={autoExpand} globalExpand={catKey && blockExpansion ? blockExpansion[catKey] : undefined} />
-        );
+        if (!catKey || !hiddenBlockTypes?.has(catKey)) {
+          toolCallParts.push(
+            <ToolCallBlock key={`tc${i}`} block={block} blockColors={blockColors} autoExpand={autoExpand} globalExpand={catKey && blockExpansion ? blockExpansion[catKey] : undefined} />
+          );
+        }
       } else if (block.type === "toolCall") {
         const catKey = toolColorKey((block.name as string) || "") as BlockCategory;
-        toolCallParts.push(
-          <ToolCallBlock
-            key={`tc${i}`}
-            block={{ id: block.id, name: block.name, input: block.arguments || block.input || {} }}
-            blockColors={blockColors}
-            autoExpand={autoExpand}
-            globalExpand={catKey && blockExpansion ? blockExpansion[catKey] : undefined}
-          />
-        );
+        if (!catKey || !hiddenBlockTypes?.has(catKey)) {
+          toolCallParts.push(
+            <ToolCallBlock
+              key={`tc${i}`}
+              block={{ id: block.id, name: block.name, input: block.arguments || block.input || {} }}
+              blockColors={blockColors}
+              autoExpand={autoExpand}
+              globalExpand={catKey && blockExpansion ? blockExpansion[catKey] : undefined}
+            />
+          );
+        }
       } else {
         const fallbackText = (block.text as string) || (block.content as string) || "";
         if (fallbackText) {
@@ -893,6 +901,7 @@ function MessageRenderer({
   settings,
   toolInputsMap,
   onNavigateSession,
+  hiddenBlockTypes,
 }: {
   entry: NormalizedMessage;
   allThinkingExpanded: boolean;
@@ -901,6 +910,7 @@ function MessageRenderer({
   settings: { showTimestamps: boolean; autoExpandToolCalls: boolean };
   toolInputsMap?: Map<string, Record<string, unknown>>;
   onNavigateSession?: (key: string) => void;
+  hiddenBlockTypes?: Set<string>;
 }) {
   const t = entry.type;
 
@@ -934,10 +944,12 @@ function MessageRenderer({
         blockExpansion={blockExpansion}
         blockColors={blockColors}
         autoExpand={settings.autoExpandToolCalls}
+        hiddenBlockTypes={hiddenBlockTypes}
       />
     );
   if (role === "toolResult") {
     const catKey = toolColorKey(msg.toolName || "") as BlockCategory;
+    if (catKey && hiddenBlockTypes?.has(catKey)) return null;
     return (
       <ToolResultBlock
         msg={msg}
