@@ -6,6 +6,7 @@ import { useSSE } from "@/lib/useSSE";
 import { sessionLabel } from "@/lib/client-utils";
 import Sidebar from "./Sidebar";
 import MainPanel from "./MainPanel";
+import AnalyticsDashboard from "./AnalyticsDashboard";
 
 const SessionTree = lazy(() => import("./SessionTree"));
 
@@ -26,6 +27,7 @@ export default function App() {
   const setScrollTargetIndex = useStore((s) => s.setScrollTargetIndex);
   const activeSessions = useStore((s) => s.activeSessions);
   const setMessages = useStore((s) => s.setMessages);
+  const sidebarTab = useStore((s) => s.sidebarTab);
 
   const treeDragging = useRef(false);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -190,7 +192,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <Sidebar />
-      <MainPanel />
+      {sidebarTab === "analytics" ? <AnalyticsDashboard /> : <MainPanel />}
       {/* Right pane tray handle */}
       <div
         className={`tray-handle ${treePanelOpen ? "open" : ""}`}

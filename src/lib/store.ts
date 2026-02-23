@@ -31,7 +31,7 @@ interface AppState {
   settings: AppSettings;
   scrollTargetIndex: number | null;
   archivedSessionIds: Set<string>;
-  sidebarTab: "browse" | "archived";
+  sidebarTab: "browse" | "archived" | "analytics";
   activeSessions: Set<string>;
 
   setSessions: (sessions: SessionInfo[]) => void;
@@ -58,7 +58,7 @@ interface AppState {
   setScrollTargetIndex: (idx: number | null) => void;
   archiveSession: (sessionId: string) => void;
   unarchiveSession: (sessionId: string) => void;
-  setSidebarTab: (tab: "browse" | "archived") => void;
+  setSidebarTab: (tab: "browse" | "archived" | "analytics") => void;
   setActiveSessions: (ids: Set<string>) => void;
   initFromLocalStorage: () => void;
   applyFilter: () => void;
@@ -200,6 +200,9 @@ const DEFAULT_SOURCE_FILTERS: Record<string, boolean> = {
   copilot: true,
   factory: true,
   opencode: true,
+  aider: true,
+  continue: true,
+  cursor: true,
 };
 
 export const useStore = create<AppState>((set, get) => ({

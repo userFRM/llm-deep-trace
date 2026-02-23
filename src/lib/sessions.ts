@@ -703,6 +703,175 @@ export function listOpenCodeSessions(): SessionInfo[] {
   return sessions;
 }
 
+// ── Aider ──
+
+export function listAiderSessions(): SessionInfo[] {
+  const historyPath = path.join(HOME, ".aider.chat.history.md");
+  const sessions: SessionInfo[] = [];
+  if (!fs.existsSync(historyPath)) {
+    console.warn("Aider: 0 sessions found (no history file)");
+    return sessions;
+  }
+
+  try {
+    const data = fs.readFileSync(historyPath, "utf-8");
+    let updatedAt = 0;
+    try { updatedAt = Math.floor(fs.statSync(historyPath).mtimeMs); } catch { /* */ }
+
+    // Split by "#### " lines which delimit user messages in aider history
+    const userMsgs = data.split(/^#### /m).filter(Boolean);
+    const msgCount = userMsgs.length;
+    const preview = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1].split("\n")[0].slice(0, 120) : "";
+
+    sessions.push({
+      sessionId: "aider-history",
+      key: "aider-history",
+      label: "aider chat history",
+      lastUpdated: updatedAt,
+      channel: "aider",
+      chatType: "direct",
+      messageCount: msgCount,
+      preview,
+      isActive: true,
+      isDeleted: false,
+      isSubagent: false,
+      compactionCount: 0,
+      source: "aider",
+      filePath: historyPath,
+    });
+  } catch { /* skip */ }
+
+  if (sessions.length === 0) console.warn("Aider: 0 sessions found");
+  return sessions;
+}
+
+// ── Continue.dev ──
+
+export function listContinueSessions(): SessionInfo[] {
+  const continueDir = path.join(HOME, ".continue", "sessions");
+  const sessions: SessionInfo[] = [];
+  if (!fs.existsSync(continueDir)) {
+    console.warn("Continue.dev: 0 sessions found (directory missing)");
+    return sessions;
+  }
+
+  try {
+    for (const f of fs.readdirSync(continueDir)) {
+      if (!f.endsWith(".json")) continue;
+      const fullPath = path.join(continueDir, f);
+      try {
+        const raw = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
+        const history = raw.history || raw.messages || [];
+        let updatedAt = 0;
+        try { updatedAt = Math.floor(fs.statSync(fullPath).mtimeMs); } catch { /* */ }
+
+        let preview = "";
+        let msgCount = 0;
+        for (const m of history as Record<string, unknown>[]) {
+          const role = (m.role as string) || "";
+          if (role === "user" || role === "assistant") msgCount++;
+          if (role === "user" && !preview) {
+            if (typeof m.content === "string") preview = (m.content as string).slice(0, 120);
+          }
+        }
+
+        const sessionId = path.basename(f, ".json");
+        const title = (raw.title as string) || "";
+        sessions.push({
+          sessionId,
+          key: sessionId,
+          title: title || undefined,
+          label: title || (preview ? preview.slice(0, 60) : sessionId.slice(0, 14)),
+          lastUpdated: updatedAt,
+          channel: "continue",
+          chatType: "direct",
+          messageCount: msgCount,
+          preview,
+          isActive: true,
+          isDeleted: false,
+          isSubagent: false,
+          compactionCount: 0,
+          source: "continue",
+          filePath: fullPath,
+        });
+      } catch { /* skip bad files */ }
+    }
+  } catch { /* dir not readable */ }
+
+  if (sessions.length === 0) console.warn("Continue.dev: 0 sessions found");
+  sessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
+  return sessions;
+}
+
+// ── Cursor ──
+
+export function listCursorSessions(): SessionInfo[] {
+  const cursorDir = path.join(HOME, ".cursor-server");
+  const sessions: SessionInfo[] = [];
+  if (!fs.existsSync(cursorDir)) {
+    console.warn("Cursor: 0 sessions found (directory missing)");
+    return sessions;
+  }
+
+  function scanDir(dir: string) {
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scanDir(fullPath);
+        } else if (entry.name.endsWith(".json") || entry.name.endsWith(".jsonl")) {
+          try {
+            let messages: Record<string, unknown>[] = [];
+            if (entry.name.endsWith(".jsonl")) {
+              messages = parseJsonl(fullPath) as unknown as Record<string, unknown>[];
+            } else {
+              const raw = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
+              messages = Array.isArray(raw) ? raw : (raw.messages || raw.history || []);
+            }
+            if (!Array.isArray(messages) || messages.length === 0) return;
+
+            let updatedAt = 0;
+            try { updatedAt = Math.floor(fs.statSync(fullPath).mtimeMs); } catch { /* */ }
+
+            let preview = "";
+            let msgCount = 0;
+            for (const m of messages) {
+              const role = (m.role as string) || "";
+              if (role === "user" || role === "assistant") msgCount++;
+              if (role === "user" && !preview) {
+                if (typeof m.content === "string") preview = (m.content as string).slice(0, 120);
+              }
+            }
+
+            const sessionId = path.basename(entry.name).replace(/\.(json|jsonl)$/, "");
+            sessions.push({
+              sessionId,
+              key: sessionId,
+              label: preview ? preview.slice(0, 60) : sessionId.slice(0, 14),
+              lastUpdated: updatedAt,
+              channel: "cursor",
+              chatType: "direct",
+              messageCount: msgCount,
+              preview,
+              isActive: true,
+              isDeleted: false,
+              isSubagent: false,
+              compactionCount: 0,
+              source: "cursor",
+              filePath: fullPath,
+            });
+          } catch { /* skip bad files */ }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  scanDir(cursorDir);
+  if (sessions.length === 0) console.warn("Cursor: 0 sessions found");
+  sessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
+  return sessions;
+}
+
 // ── Aggregate all providers ──
 
 export function getAllSessions(): SessionInfo[] {
@@ -715,6 +884,9 @@ export function getAllSessions(): SessionInfo[] {
     ...listCopilotSessions(),
     ...listFactorySessions(),
     ...listOpenCodeSessions(),
+    ...listAiderSessions(),
+    ...listContinueSessions(),
+    ...listCursorSessions(),
   ];
   all.sort((a, b) => b.lastUpdated - a.lastUpdated);
   return all;
@@ -771,7 +943,7 @@ export function getSessionFilePath(
   }
 
   // For new providers, search all sessions by filePath
-  if (["kimi", "gemini", "copilot", "factory", "opencode"].includes(source)) {
+  if (["kimi", "gemini", "copilot", "factory", "opencode", "aider", "continue", "cursor"].includes(source)) {
     const all = getAllSessions();
     const match = all.find(s => s.sessionId === sessionId && s.source === source);
     return match?.filePath || null;
@@ -890,6 +1062,70 @@ export function getSessionMessages(
         return {
           type: role,
           timestamp: (m.timestamp as string) || undefined,
+          message: { role, content },
+        } as RawEntry;
+      });
+    } catch { return null; }
+  }
+
+  // Aider: markdown history file — convert to simple entries
+  if (source === "aider") {
+    const fp = getSessionFilePath(sessionId, source);
+    if (!fp) return null;
+    try {
+      const data = fs.readFileSync(fp, "utf-8");
+      const blocks = data.split(/^#### /m).filter(Boolean);
+      const entries: RawEntry[] = [];
+      for (const block of blocks) {
+        const lines = block.split("\n");
+        const userMsg = lines[0] || "";
+        entries.push({
+          type: "user",
+          message: { role: "user", content: userMsg },
+        });
+        const rest = lines.slice(1).join("\n").trim();
+        if (rest) {
+          entries.push({
+            type: "assistant",
+            message: { role: "assistant", content: rest },
+          });
+        }
+      }
+      return entries;
+    } catch { return null; }
+  }
+
+  // Continue.dev: JSON with history/messages array
+  if (source === "continue") {
+    const fp = getSessionFilePath(sessionId, source);
+    if (!fp) return null;
+    try {
+      const raw = JSON.parse(fs.readFileSync(fp, "utf-8"));
+      const messages = raw.history || raw.messages || [];
+      return (messages as Record<string, unknown>[]).map((m) => {
+        const role = (m.role as string) || "user";
+        const content = (m.content as string) || "";
+        return {
+          type: role,
+          message: { role, content },
+        } as RawEntry;
+      });
+    } catch { return null; }
+  }
+
+  // Cursor: JSON/JSONL files
+  if (source === "cursor") {
+    const fp = getSessionFilePath(sessionId, source);
+    if (!fp) return null;
+    if (fp.endsWith(".jsonl")) return parseJsonl(fp);
+    try {
+      const raw = JSON.parse(fs.readFileSync(fp, "utf-8"));
+      const messages = Array.isArray(raw) ? raw : (raw.messages || raw.history || []);
+      return (messages as Record<string, unknown>[]).map((m) => {
+        const role = (m.role as string) || "user";
+        const content = (m.content as string) || "";
+        return {
+          type: role,
           message: { role, content },
         } as RawEntry;
       });

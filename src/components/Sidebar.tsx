@@ -35,6 +35,9 @@ const sourceColors: Record<string, string> = {
   copilot: "#52525B",
   factory: "#F97316",
   opencode: "#14B8A6",
+  aider: "#EC4899",
+  continue: "#8B5CF6",
+  cursor: "#6366F1",
 };
 
 const BotSvg = () => (
@@ -410,6 +413,9 @@ export default function Sidebar() {
     { key: "copilot", label: "copilot" },
     { key: "factory", label: "factory" },
     { key: "opencode", label: "opencode" },
+    { key: "aider", label: "aider" },
+    { key: "continue", label: "continue" },
+    { key: "cursor", label: "cursor" },
   ];
   const srcBadges = allBadges.filter(b => activeSources.has(b.key));
 
@@ -470,7 +476,7 @@ export default function Sidebar() {
           ))}
         </div>
 
-        {/* Browse / Archived tabs */}
+        {/* Browse / Archived / Analytics tabs */}
         <div className="sidebar-tabs">
           <button
             className={`sidebar-tab ${sidebarTab === "browse" ? "active" : ""}`}
@@ -486,6 +492,12 @@ export default function Sidebar() {
             {archivedSessionIds.size > 0 && (
               <span className="sidebar-tab-count">{archivedSessionIds.size}</span>
             )}
+          </button>
+          <button
+            className={`sidebar-tab ${sidebarTab === "analytics" ? "active" : ""}`}
+            onClick={() => setSidebarTab("analytics")}
+          >
+            analytics
           </button>
         </div>
       </div>

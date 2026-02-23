@@ -324,6 +324,7 @@ function InnerFlow({
   allSessions,
   onScrollToMessage,
   onNavigateSession,
+  onResetView,
 }: {
   messages: NormalizedMessage[];
   sessionId: string;
@@ -331,6 +332,7 @@ function InnerFlow({
   allSessions: import("@/lib/types").SessionInfo[];
   onScrollToMessage: (messageIndex: number) => void;
   onNavigateSession: (sessionKey: string) => void;
+  onResetView?: (fn: () => void) => void;
 }) {
   const { fitView } = useReactFlow();
 
@@ -397,6 +399,15 @@ function InnerFlow({
     return () => clearTimeout(timer);
   }, [nodes.length > 0, fitView]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Expose reset-view callback to parent
+  useEffect(() => {
+    if (onResetView) {
+      onResetView(() => {
+        fitView({ padding: 0.12, duration: 300 });
+      });
+    }
+  }, [fitView, onResetView]);
+
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
       if (node.type === "turnNode") {
@@ -435,20 +446,44 @@ export default function SessionTree({
   onNavigateSession,
   onClose,
 }: SessionTreeProps) {
+  const resetViewRef = useRef<(() => void) | null>(null);
+
+  const handleResetView = useCallback((fn: () => void) => {
+    resetViewRef.current = fn;
+  }, []);
+
   return (
     <div className="tree-panel">
       <div className="tree-panel-header">
         <span className="tree-panel-title">Conversation Map</span>
-        <button className="tree-panel-close" onClick={onClose} title="Close">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M3 3l10 10M13 3L3 13"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
+        <div className="tree-panel-actions">
+          <button
+            className="tree-panel-reset"
+            onClick={() => resetViewRef.current?.()}
+            title="Reset view"
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M2 8a6 6 0 0110.47-4M14 8a6 6 0 01-10.47 4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+              <path d="M12 1v3h-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 15v-3h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button className="tree-panel-close" onClick={onClose} title="Close">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M3 3l10 10M13 3L3 13"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
       <div className="tree-panel-body">
         <ReactFlowProvider key={sessionId}>
@@ -459,6 +494,7 @@ export default function SessionTree({
             allSessions={allSessions}
             onScrollToMessage={onScrollToMessage}
             onNavigateSession={onNavigateSession}
+            onResetView={handleResetView}
           />
         </ReactFlowProvider>
       </div>

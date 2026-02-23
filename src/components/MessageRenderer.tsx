@@ -24,6 +24,77 @@ const ChevronSvg = ({ size = 8 }: { size?: number }) => (
   </svg>
 );
 
+// ── Image helpers ──
+const DATA_URI_RE = /data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+/g;
+const FILE_PATH_RE = /(?:^|\s)(\/[^\s]+\.(?:png|jpg|jpeg|gif|webp))/gi;
+
+function imagePathToSrc(filePath: string): string {
+  return `/api/image?path=${btoa(filePath)}`;
+}
+
+function extractImagesFromText(text: string): string[] {
+  const images: string[] = [];
+  const dataMatches = text.match(DATA_URI_RE);
+  if (dataMatches) images.push(...dataMatches);
+  FILE_PATH_RE.lastIndex = 0;
+  let m;
+  while ((m = FILE_PATH_RE.exec(text)) !== null) {
+    images.push(imagePathToSrc(m[1].trim()));
+  }
+  return images;
+}
+
+function ImageThumbnail({ src, alt }: { src: string; alt?: string }) {
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightboxOpen(false);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [lightboxOpen]);
+
+  return (
+    <>
+      <img
+        src={src}
+        alt={alt || "image"}
+        className="msg-image-thumb"
+        onClick={() => setLightboxOpen(true)}
+        loading="lazy"
+      />
+      {lightboxOpen && (
+        <div className="msg-lightbox" onClick={() => setLightboxOpen(false)}>
+          <img
+            src={src}
+            alt={alt || "image"}
+            className="msg-lightbox-img"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button className="msg-lightbox-close" onClick={() => setLightboxOpen(false)} title="Close (Esc)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ImageBlock({ block }: { block: Record<string, unknown> }) {
+  if (block.type !== "image") return null;
+  const source = block.source as Record<string, unknown> | undefined;
+  if (!source || source.type !== "base64") return null;
+  const mediaType = (source.media_type as string) || "image/png";
+  const data = source.data as string;
+  if (!data) return null;
+  const src = `data:${mediaType};base64,${data}`;
+  return <ImageThumbnail src={src} alt="embedded image" />;
+}
+
 // ── Arg Value with show more toggle ──
 function ArgValue({ value }: { value: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -567,13 +638,25 @@ function ToolResultBlock({
 function UserMessage({ content, time, showTime }: { content: unknown; time: string; showTime: boolean }) {
   let text = extractText(content);
   text = stripConversationMeta(text);
-  if (!text) return null;
+
+  // Detect image blocks in user content
+  const imageBlocks: React.ReactElement[] = [];
+  if (Array.isArray(content)) {
+    (content as Record<string, unknown>[]).forEach((block, i) => {
+      if (block && block.type === "image") {
+        imageBlocks.push(<ImageBlock key={`uimg${i}`} block={block} />);
+      }
+    });
+  }
+
+  if (!text && imageBlocks.length === 0) return null;
 
   return (
     <div className="msg">
       <div className="msg-user copyable">
-        <div className="msg-user-text">{text}</div>
-        <CopyButton text={text} label="Copy text" />
+        {text && <div className="msg-user-text">{text}</div>}
+        {imageBlocks.length > 0 && <div className="msg-image-row">{imageBlocks}</div>}
+        {text && <CopyButton text={text} label="Copy text" />}
       </div>
       {showTime && <div className="msg-time">{time}</div>}
     </div>
@@ -609,14 +692,26 @@ function AssistantMessage({
       <div key="t0" className="md-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
     );
     rawMdParts.push(content);
+    // Detect embedded images in text
+    const imgs = extractImagesFromText(content);
+    for (let idx = 0; idx < imgs.length; idx++) {
+      textParts.push(<ImageThumbnail key={`img-s-${idx}`} src={imgs[idx]} />);
+    }
   } else if (Array.isArray(content)) {
     (content as Record<string, unknown>[]).forEach((block, i) => {
       if (!block) return;
-      if (block.type === "text" && block.text) {
+      if (block.type === "image") {
+        textParts.push(<ImageBlock key={`img${i}`} block={block} />);
+      } else if (block.type === "text" && block.text) {
         textParts.push(
           <div key={`t${i}`} className="md-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(block.text as string) }} />
         );
         rawMdParts.push(block.text as string);
+        // Detect embedded images in text blocks
+        const imgs = extractImagesFromText(block.text as string);
+        for (let idx = 0; idx < imgs.length; idx++) {
+          textParts.push(<ImageThumbnail key={`img-t${i}-${idx}`} src={imgs[idx]} />);
+        }
       } else if (block.type === "thinking" && block.thinking) {
         textParts.push(
           <ThinkingBlock
