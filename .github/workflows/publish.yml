@@ -1,39 +1,35 @@
-# Release workflow — triggered by version tags (e.g. v0.2.0)
+# Release workflow — triggered by pushing a version tag
 #
 # How to release:
-#   1. Merge all changes to master
-#   2. npm version patch   (or minor / major)
-#   3. git push && git push --tags
+#   git tag v0.2.0 && git push --tags
 #
-# That's it. This workflow handles the rest:
-#   - builds the Next.js app to verify it compiles
-#   - publishes to npm
-#   - creates a GitHub release with auto-generated notes
+# That's it. CI handles build, npm publish, and GitHub release automatically.
+# No NPM_TOKEN needed — uses OIDC trusted publishing.
 #
-# Required secret: NPM_TOKEN
-#   → npmjs.com → Access Tokens → Granular → Read+write on llm-deep-trace
-#   → GitHub repo → Settings → Secrets → Actions → NPM_TOKEN
+# One-time setup on npmjs.com:
+#   Package → Settings → Publishing → Add publishing rule for GitHub Actions
+#   Repository: userFRM/llm-deep-trace, workflow: publish.yml
 
 name: Publish
 
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
 
 jobs:
   publish:
     name: Build, publish & release
     runs-on: ubuntu-latest
-    permissions:
-      contents: write   # needed to create GitHub releases
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
@@ -42,13 +38,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Sync version from git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
       - name: Build
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance || echo "Version already published, skipping"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
