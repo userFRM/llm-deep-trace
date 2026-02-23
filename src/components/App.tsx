@@ -35,9 +35,15 @@ export default function App() {
   const [showSetup, setShowSetup] = useState<boolean | null>(null); // null = not yet checked
 
   useEffect(() => {
-    const done = localStorage.getItem("llm-deep-trace-setup-done");
     const forceSetup = new URLSearchParams(window.location.search).get("setup") === "1";
-    setShowSetup(!done || forceSetup);
+    const done = localStorage.getItem("llm-deep-trace-setup-done");
+    // Returning users (pre-date the setup screen) have other keys set — auto-skip
+    const isReturningUser = !!localStorage.getItem("llm-deep-trace-settings")
+      || !!localStorage.getItem("llm-deep-trace-block-colors");
+    if (isReturningUser && !done) {
+      localStorage.setItem("llm-deep-trace-setup-done", "1");
+    }
+    setShowSetup(forceSetup || (!done && !isReturningUser));
   }, []);
 
   useEffect(() => {
