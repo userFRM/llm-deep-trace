@@ -1,36 +1,137 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<div align="center">
+  <img src="public/logo.png" width="80" alt="llm-deep-trace" />
+  <h1>llm-deep-trace</h1>
+  <p><strong>The session browser for AI coding agents.</strong></p>
+  <p>Browse, search, and analyze every conversation your AI agents have ever had.<br/>All local. No accounts. No cloud.</p>
+  <br/>
+  <!-- replace with actual screenshot -->
+  <!-- <img src="docs/screenshot.png" width="900" alt="screenshot" /> -->
+</div>
 
-## Getting Started
+---
 
-First, run the development server:
+## What it is
+
+You use AI coding agents. They leave behind session logs. Those logs are gold — decisions made, code written, reasoning traced, subagents spawned. But they're just JSONL files buried in `~/.claude/` or `~/.kimi/`.
+
+llm-deep-trace turns those files into a proper interface: threaded conversations, subagent trees, a conversation map, analytics, live tail, and full-text search across everything.
+
+It runs entirely on your machine. It reads your local files. That's it.
+
+---
+
+## Supported agents
+
+| Agent | Sessions | Subagents | Notes |
+|---|---|---|---|
+| **Claude Code** (Anthropic) | ✓ | ✓ | Full support incl. agent teams |
+| **Codex** (OpenAI) | ✓ | — | |
+| **Kimi** (Moonshot AI) | ✓ | — | Think-block rendering |
+| **Gemini CLI** (Google) | ✓ | — | |
+| **OpenClaw** | ✓ | ✓ | |
+| **Cursor** | ✓ | — | Partial — some metadata missing |
+| **Aider** | ✓ | — | Chat history format |
+| **Continue.dev** | ✓ | — | |
+| **GitHub Copilot** | ✓ | — | |
+| **Factory Droid** | ✓ | — | |
+| **OpenCode** | ✓ | — | |
+
+---
+
+## Quick start
 
 ```bash
+git clone https://github.com/userFRM/llm-deep-trace
+cd llm-deep-trace
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). No config needed — it finds your sessions automatically.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Requirements:** Node.js 18+
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Features
 
-To learn more about Next.js, take a look at the following resources:
+**Session browser**
+- All providers in one sidebar, grouped and searchable
+- Parent sessions show subagent count; click to expand the tree
+- Expand all / collapse all, archive sessions you don't need
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Conversation view**
+- User messages as bubbles, assistant responses as cards
+- Tool call blocks collapsed by default, color-coded by type (bash, edit, web, browser, message, spawn)
+- Thinking blocks (Claude extended thinking, Kimi reasoning) as expandable cards
+- Inline image thumbnails with click-to-lightbox
+- Ctrl+F find with match counter and highlights
+- Skip preamble toggle — jump straight to the actual work
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Subagent tree + conversation map**
+- React Flow visualization of the full session graph
+- Click any node to navigate to that session
+- Reset view, zoom capped at 75%, padding scales with graph size
 
-## Deploy on Vercel
+**Live tail**
+- Follow an active session in real time (3s poll)
+- Green pulsing indicator while tailing
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Analytics**
+- Sessions per day, stacked by provider
+- Provider breakdown, top tools used, token totals
+- Session length distribution
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Search**
+- Full-text search across all sessions and all providers
+
+---
+
+## How to ship it (for contributors)
+
+Right now: clone and run locally. That's the intended workflow for a local devtool.
+
+Planned:
+- `npm install -g llm-deep-trace` + `llm-deep-trace` CLI command
+- Homebrew tap for Mac users who prefer it
+- Docker one-liner for the server crowd
+
+PRs welcome on any of these.
+
+---
+
+## Limitations
+
+Being straight with you:
+
+- **Read-only.** Browse and analyze — you can't resume or fork sessions from here yet.
+- **Local files only.** Reads `~/.claude/`, `~/.kimi/`, etc. on the machine it runs on. Remote sessions not supported.
+- **Cursor / Aider / Continue** support is partial. Session formats vary and some metadata is missing.
+- **No mobile UI.** Built for desktop browsers.
+- **Requires Node.js 18+.** Not a zero-dep install.
+
+---
+
+## vs alternatives
+
+[**jazzyalex/agent-sessions**](https://github.com/jazzyalex/agent-sessions) — native macOS Swift app, well-made, focused on Claude Code. If you want a native Mac experience, check it out.
+
+What's different here:
+- Cross-platform (Mac, Linux, Windows — anywhere Node.js runs)
+- 11 agent providers vs primarily Claude Code
+- Subagent tree visualization for agent teams
+- Full analytics dashboard
+- Conversation map (React Flow)
+- Actively developed
+
+---
+
+## Tech stack
+
+Next.js 16 · React 19 · TypeScript · React Flow · Zustand · highlight.js · Marked
+
+---
+
+## License
+
+MIT

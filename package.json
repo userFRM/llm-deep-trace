@@ -1,7 +1,14 @@
 {
   "name": "llm-deep-trace",
   "version": "0.1.0",
-  "private": true,
+  "description": "The session browser for AI coding agents — Claude Code, Codex, Kimi, Gemini CLI, OpenClaw, Cursor, Aider, and more.",
+  "keywords": ["claude-code", "codex", "kimi", "gemini", "ai-agents", "llm", "session-browser", "devtools"],
+  "homepage": "https://github.com/userFRM/llm-deep-trace",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/userFRM/llm-deep-trace"
+  },
+  "license": "MIT",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
