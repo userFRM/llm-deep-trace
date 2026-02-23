@@ -490,6 +490,18 @@ export default function MainPanel() {
   const sess = sessions.find((s) => s.sessionId === currentSessionId);
   const errors = useErrorInfo(currentMessages);
 
+  // Must be declared before any early return — Rules of Hooks
+  const displayMessages = useMemo(() => {
+    if (!appSettings.skipPreamble) return currentMessages;
+    let firstUserIdx = -1;
+    for (let i = 0; i < currentMessages.length; i++) {
+      const role = currentMessages[i].message?.role;
+      if (role === "user") { firstUserIdx = i; break; }
+    }
+    if (firstUserIdx <= 0) return currentMessages;
+    return currentMessages.slice(firstUserIdx);
+  }, [currentMessages, appSettings.skipPreamble]);
+
   // Build tool inputs map: toolCallId → input args (so tool results can access original inputs)
   const toolInputsMap = useMemo(() => {
     const map = new Map<string, Record<string, unknown>>();
@@ -665,17 +677,6 @@ export default function MainPanel() {
   }
 
   const label = sess ? sessionLabel(sess) : currentSessionId.slice(0, 14) + "\u2026";
-  // Apply skip preamble: hide system messages and everything before first user message
-  const displayMessages = useMemo(() => {
-    if (!appSettings.skipPreamble) return currentMessages;
-    let firstUserIdx = -1;
-    for (let i = 0; i < currentMessages.length; i++) {
-      const role = currentMessages[i].message?.role;
-      if (role === "user") { firstUserIdx = i; break; }
-    }
-    if (firstUserIdx <= 0) return currentMessages;
-    return currentMessages.slice(firstUserIdx);
-  }, [currentMessages, appSettings.skipPreamble]);
 
   const total = displayMessages.length;
   const startIdx = Math.max(0, total - displayCount);
