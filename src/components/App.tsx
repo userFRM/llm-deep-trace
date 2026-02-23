@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, lazy, Suspense } from "react";
+import { useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { useStore } from "@/lib/store";
 import { useSSE } from "@/lib/useSSE";
 import { sessionLabel } from "@/lib/client-utils";
@@ -17,14 +17,21 @@ export default function App() {
   const currentMessages = useStore((s) => s.currentMessages);
   const treePanelOpen = useStore((s) => s.treePanelOpen);
   const setTreePanelOpen = useStore((s) => s.setTreePanelOpen);
+  const treePanelManualClose = useStore((s) => s.treePanelManualClose);
+  const setTreePanelManualClose = useStore((s) => s.setTreePanelManualClose);
+  const treePanelWidth = useStore((s) => s.treePanelWidth);
+  const setTreePanelWidth = useStore((s) => s.setTreePanelWidth);
   const setTheme = useStore((s) => s.setTheme);
   const initFromLocalStorage = useStore((s) => s.initFromLocalStorage);
   const setScrollTargetIndex = useStore((s) => s.setScrollTargetIndex);
+  const activeSessions = useStore((s) => s.activeSessions);
+  const setMessages = useStore((s) => s.setMessages);
+
+  const treeDragging = useRef(false);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    // Initialize all persisted settings from localStorage
     initFromLocalStorage();
-
     try {
       const saved = localStorage.getItem("kova-theme") || "system";
       setTheme(saved);
@@ -62,7 +69,49 @@ export default function App() {
 
   useSSE();
 
-  // Scroll-to-message handler for the tree panel
+  // Live tail polling for active sessions
+  useEffect(() => {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+
+    if (currentSessionId && activeSessions.has(currentSessionId)) {
+      const sess = sessions.find(s => s.sessionId === currentSessionId);
+      const source = sess?.source || "kova";
+
+      pollTimerRef.current = setInterval(() => {
+        fetch(`/api/sessions/${currentSessionId}/messages?source=${source}`)
+          .then((r) => r.json())
+          .then((entries) => {
+            if (Array.isArray(entries)) setMessages(entries);
+          })
+          .catch(() => {});
+      }, 3000);
+    }
+
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, [currentSessionId, activeSessions, sessions, setMessages]);
+
+  // Auto-show/hide tree panel based on subagents
+  useEffect(() => {
+    if (!currentSessionId) return;
+    const sess = sessions.find((s) => s.sessionId === currentSessionId);
+    if (!sess) return;
+
+    if (sess.hasSubagents) {
+      if (!treePanelManualClose) {
+        setTreePanelOpen(true);
+      }
+    } else {
+      setTreePanelOpen(false);
+    }
+  }, [currentSessionId, sessions, treePanelManualClose, setTreePanelOpen]);
+
+  // Reset manual close when switching sessions
+  useEffect(() => {
+    setTreePanelManualClose(false);
+  }, [currentSessionId, setTreePanelManualClose]);
+
   const handleScrollToMessage = useCallback(
     (messageIndex: number) => {
       setScrollTargetIndex(messageIndex);
@@ -70,7 +119,6 @@ export default function App() {
     [setScrollTargetIndex]
   );
 
-  // Navigate to a child/subagent session by key or ID (supports partial ID matching)
   const handleNavigateSession = useCallback(
     (keyOrId: string) => {
       if (!keyOrId) return;
@@ -79,9 +127,9 @@ export default function App() {
           s.sessionId === keyOrId ||
           s.key === keyOrId ||
           s.sessionId.startsWith(keyOrId) ||
-          s.sessionId.includes(keyOrId) ||  // handles "ac025c7" matching "agent-ac025c7"
+          s.sessionId.includes(keyOrId) ||
           s.key.endsWith("/" + keyOrId.slice(0, 8)) ||
-          ("agent-" + keyOrId) === s.sessionId  // "ac025c7" → "agent-ac025c7"
+          ("agent-" + keyOrId) === s.sessionId
       );
       if (target) {
         setCurrentSession(target.sessionId);
@@ -90,7 +138,48 @@ export default function App() {
     [sessions, setCurrentSession]
   );
 
-  // Session label for tree panel root node
+  const handleCloseTree = useCallback(() => {
+    setTreePanelOpen(false);
+    setTreePanelManualClose(true);
+  }, [setTreePanelOpen, setTreePanelManualClose]);
+
+  const handleToggleTree = useCallback(() => {
+    if (treePanelOpen) {
+      handleCloseTree();
+    } else {
+      setTreePanelOpen(true);
+      setTreePanelManualClose(false);
+    }
+  }, [treePanelOpen, handleCloseTree, setTreePanelOpen, setTreePanelManualClose]);
+
+  // Tree panel drag-to-resize
+  const handleTreeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    treeDragging.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const startX = e.clientX;
+    const startW = treePanelWidth;
+
+    const onMove = (ev: MouseEvent) => {
+      if (!treeDragging.current) return;
+      const newW = startW - (ev.clientX - startX);
+      setTreePanelWidth(newW);
+    };
+
+    const onUp = () => {
+      treeDragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [treePanelWidth, setTreePanelWidth]);
+
   const sess = sessions.find((s) => s.sessionId === currentSessionId);
   const sessLabel = sess
     ? sessionLabel(sess)
@@ -102,18 +191,32 @@ export default function App() {
     <div className="app-shell">
       <Sidebar />
       <MainPanel />
+      {/* Right pane tray handle */}
+      <div
+        className={`tray-handle ${treePanelOpen ? "open" : ""}`}
+        onClick={handleToggleTree}
+        title={treePanelOpen ? "Close conversation map" : "Open conversation map"}
+      >
+        <svg width="6" height="24" viewBox="0 0 6 24" fill="none">
+          <rect x="1" y="8" width="1.5" height="8" rx="0.75" fill="currentColor" />
+          <rect x="3.5" y="8" width="1.5" height="8" rx="0.75" fill="currentColor" />
+        </svg>
+      </div>
       {treePanelOpen && currentSessionId && (
-        <Suspense fallback={<div className="tree-panel"><div className="loading-state"><div className="spinner" />Loading&hellip;</div></div>}>
-          <SessionTree
-            messages={currentMessages}
-            sessionId={currentSessionId}
-            sessionLabel={sessLabel}
-            allSessions={sessions}
-            onScrollToMessage={handleScrollToMessage}
-            onNavigateSession={handleNavigateSession}
-            onClose={() => setTreePanelOpen(false)}
-          />
-        </Suspense>
+        <div className="tree-panel-wrap" style={{ width: treePanelWidth }}>
+          <div className="tree-resize-handle" onMouseDown={handleTreeMouseDown} />
+          <Suspense fallback={<div className="tree-panel"><div className="loading-state"><div className="spinner" />Loading&hellip;</div></div>}>
+            <SessionTree
+              messages={currentMessages}
+              sessionId={currentSessionId}
+              sessionLabel={sessLabel}
+              allSessions={sessions}
+              onScrollToMessage={handleScrollToMessage}
+              onNavigateSession={handleNavigateSession}
+              onClose={handleCloseTree}
+            />
+          </Suspense>
+        </div>
       )}
     </div>
   );

@@ -34,6 +34,14 @@ export interface AppSettings {
   showTimestamps: boolean;
   autoExpandToolCalls: boolean;
   compactSidebar: boolean;
+  skipPreamble: boolean;
+}
+
+export interface TokenStats {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
 }
 
 export const DEFAULT_BLOCK_COLORS: BlockColors = {
@@ -50,6 +58,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showTimestamps: true,
   autoExpandToolCalls: false,
   compactSidebar: false,
+  skipPreamble: false,
 };
 
 export interface NormalizedMessage {

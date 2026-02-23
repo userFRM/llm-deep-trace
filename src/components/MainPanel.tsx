@@ -471,8 +471,6 @@ export default function MainPanel() {
   const toggleAllThinking = useStore((s) => s.toggleAllThinking);
   const blockExpansion = useStore((s) => s.blockExpansion);
   const toggleBlockExpansion = useStore((s) => s.toggleBlockExpansion);
-  const treePanelOpen = useStore((s) => s.treePanelOpen);
-  const setTreePanelOpen = useStore((s) => s.setTreePanelOpen);
   const setCurrentSession = useStore((s) => s.setCurrentSession);
   const setMessages = useStore((s) => s.setMessages);
   const setLoading = useStore((s) => s.setLoading);
@@ -480,6 +478,7 @@ export default function MainPanel() {
   const appSettings = useStore((s) => s.settings);
   const scrollTargetIndex = useStore((s) => s.scrollTargetIndex);
   const setScrollTargetIndex = useStore((s) => s.setScrollTargetIndex);
+  const activeSessions = useStore((s) => s.activeSessions);
 
   const messagesRef = useRef<HTMLDivElement>(null);
   const [searchVisible, setSearchVisible] = useState(false);
@@ -666,9 +665,21 @@ export default function MainPanel() {
   }
 
   const label = sess ? sessionLabel(sess) : currentSessionId.slice(0, 14) + "\u2026";
-  const total = currentMessages.length;
+  // Apply skip preamble: hide system messages and everything before first user message
+  const displayMessages = useMemo(() => {
+    if (!appSettings.skipPreamble) return currentMessages;
+    let firstUserIdx = -1;
+    for (let i = 0; i < currentMessages.length; i++) {
+      const role = currentMessages[i].message?.role;
+      if (role === "user") { firstUserIdx = i; break; }
+    }
+    if (firstUserIdx <= 0) return currentMessages;
+    return currentMessages.slice(firstUserIdx);
+  }, [currentMessages, appSettings.skipPreamble]);
+
+  const total = displayMessages.length;
   const startIdx = Math.max(0, total - displayCount);
-  const visible = currentMessages.slice(startIdx);
+  const visible = displayMessages.slice(startIdx);
 
   return (
     <div className="main-panel">
@@ -748,6 +759,12 @@ export default function MainPanel() {
             </button>
             {exportOpen && <ExportDropdown messages={currentMessages} sess={sess} onClose={() => setExportOpen(false)} />}
           </div>
+          {currentSessionId && activeSessions.has(currentSessionId) && (
+            <span className="live-badge">
+              <span className="live-badge-dot" />
+              live
+            </span>
+          )}
           <div
             className="live-indicator"
             style={{ color: sseConnected ? "var(--green)" : "var(--red)" }}
@@ -758,15 +775,6 @@ export default function MainPanel() {
             />
             {sseConnected ? "live" : "offline"}
           </div>
-          <button
-            className={`toolbar-btn tree-panel-btn ${treePanelOpen ? "active" : ""}`}
-            onClick={() => setTreePanelOpen(!treePanelOpen)}
-            title="Session tree"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path d="M2 3h4M6 3v10M6 8h4M10 5v6M10 5h4M10 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
         </div>
         <div className="main-toolbar">
           <button

@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useStore } from "@/lib/store";
-import { sessionLabel, relativeTime, cleanPreview } from "@/lib/client-utils";
+import { sessionLabel, relativeTime, cleanPreview, copyToClipboard } from "@/lib/client-utils";
 import { SessionInfo } from "@/lib/types";
 import SettingsPanel from "./SettingsPanel";
 
@@ -30,6 +30,11 @@ const sourceColors: Record<string, string> = {
   kova: "#9B72EF",
   claude: "#3B82F6",
   codex: "#F59E0B",
+  kimi: "#06B6D4",
+  gemini: "#22C55E",
+  copilot: "#52525B",
+  factory: "#F97316",
+  opencode: "#14B8A6",
 };
 
 const BotSvg = () => (
@@ -41,6 +46,70 @@ const BotSvg = () => (
   </svg>
 );
 
+function ContextMenu({
+  x,
+  y,
+  session,
+  isArchived,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  session: SessionInfo;
+  isArchived: boolean;
+  onClose: () => void;
+}) {
+  const archiveSession = useStore((s) => s.archiveSession);
+  const unarchiveSession = useStore((s) => s.unarchiveSession);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="ctx-menu"
+      style={{ top: y, left: x }}
+    >
+      {isArchived ? (
+        <button
+          className="ctx-menu-item"
+          onClick={() => { unarchiveSession(session.sessionId); onClose(); }}
+        >
+          Unarchive
+        </button>
+      ) : (
+        <button
+          className="ctx-menu-item"
+          onClick={() => { archiveSession(session.sessionId); onClose(); }}
+        >
+          Archive
+        </button>
+      )}
+      <button
+        className="ctx-menu-item"
+        onClick={() => { copyToClipboard(session.sessionId, "Session ID copied"); onClose(); }}
+      >
+        Copy ID
+      </button>
+      {session.filePath && (
+        <button
+          className="ctx-menu-item"
+          onClick={() => { copyToClipboard(session.filePath!, "Path copied"); onClose(); }}
+        >
+          Copy path
+        </button>
+      )}
+    </div>
+  );
+}
+
 function SessionItem({
   session,
   isSubagent,
@@ -48,9 +117,12 @@ function SessionItem({
   hasSubagents,
   isExpanded,
   isSelected,
+  isLive,
+  isArchived,
   compact,
   onSelect,
   onToggleExpand,
+  onContextMenu,
 }: {
   session: SessionInfo;
   isSubagent: boolean;
@@ -58,13 +130,18 @@ function SessionItem({
   hasSubagents: boolean;
   isExpanded: boolean;
   isSelected: boolean;
+  isLive: boolean;
+  isArchived: boolean;
   compact: boolean;
   onSelect: (id: string) => void;
   onToggleExpand: (id: string) => void;
+  onContextMenu: (e: React.MouseEvent, session: SessionInfo) => void;
 }) {
   const label = sessionLabel(session);
   const src = session.source || "kova";
-  const dotCls = isSubagent
+  const dotCls = isLive
+    ? "live"
+    : isSubagent
     ? "subagent"
     : session.isActive && !session.isDeleted
     ? "active"
@@ -75,9 +152,14 @@ function SessionItem({
   if (isSelected) cls += " selected";
   if (isSubagent) cls += " subagent";
   if (compact) cls += " compact";
+  if (isArchived) cls += " archived";
 
   return (
-    <div className={cls} onClick={() => onSelect(session.sessionId)}>
+    <div
+      className={cls}
+      onClick={() => onSelect(session.sessionId)}
+      onContextMenu={(e) => onContextMenu(e, session)}
+    >
       <div className="session-row">
         {childCount > 0 && (
           <button
@@ -97,6 +179,7 @@ function SessionItem({
         <span className={`session-label ${isSubagent ? "sub" : ""}`}>
           {label}
         </span>
+        {isLive && <span className="live-badge-small">live</span>}
         {hasSubagents && <BotSvg />}
         {isSubagent && <span className="subagent-badge">subagent</span>}
         <span className="session-time">
@@ -140,12 +223,16 @@ export default function Sidebar() {
   const sidebarWidth = useStore((s) => s.sidebarWidth);
   const settingsOpen = useStore((s) => s.settingsOpen);
   const compactSidebar = useStore((s) => s.settings.compactSidebar);
+  const sidebarTab = useStore((s) => s.sidebarTab);
+  const activeSessions = useStore((s) => s.activeSessions);
+  const archivedSessionIds = useStore((s) => s.archivedSessionIds);
   const setSearchQuery = useStore((s) => s.setSearchQuery);
   const toggleSourceFilter = useStore((s) => s.toggleSourceFilter);
   const toggleGroupExpanded = useStore((s) => s.toggleGroupExpanded);
   const setCurrentSession = useStore((s) => s.setCurrentSession);
   const setSidebarWidth = useStore((s) => s.setSidebarWidth);
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
+  const setSidebarTab = useStore((s) => s.setSidebarTab);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -156,6 +243,7 @@ export default function Sidebar() {
   const [ftResults, setFtResults] = useState<{ session: SessionInfo; snippet: string }[]>([]);
   const [ftLoading, setFtLoading] = useState(false);
   const [ftActive, setFtActive] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; session: SessionInfo } | null>(null);
 
   const handleSearchChange = useCallback(
     (value: string) => {
@@ -165,9 +253,9 @@ export default function Sidebar() {
         setSearchQuery(value);
       }, 120);
 
-      // Full-text search for 3+ chars
+      // Full-text search for 2+ chars
       if (ftSearchRef.current) clearTimeout(ftSearchRef.current);
-      if (value.length >= 3) {
+      if (value.length >= 2) {
         ftSearchRef.current = setTimeout(() => {
           setFtLoading(true);
           setFtActive(true);
@@ -208,7 +296,6 @@ export default function Sidebar() {
     }
     if (parentId) {
       parentIds.add(parentId);
-      // Also match by key
       const parentByKey = sessions.find((p) => p.key === parentId);
       if (parentByKey) parentIds.add(parentByKey.sessionId);
     }
@@ -232,11 +319,9 @@ export default function Sidebar() {
   // hasSubagents: use the direct flag from scanner OR derive from parentSessionId links
   const hasSubagentsSet = new Set<string>();
   for (const s of sessions) {
-    // Direct flag set by scanner (most reliable)
     if (s.hasSubagents) {
       hasSubagentsSet.add(s.sessionId);
     }
-    // Derive from parentSessionId: if s has a parent, the parent has subagents
     const pid = s.parentSessionId;
     if (pid) {
       hasSubagentsSet.add(pid);
@@ -244,11 +329,16 @@ export default function Sidebar() {
         if (p.key === pid || p.sessionId === pid) hasSubagentsSet.add(p.sessionId);
       }
     }
-    // Kova subagent key pattern
     if (s.key?.startsWith("agent:main:subagent:")) {
       const main = sessions.find((p) => p.key === "agent:main:main");
       if (main) hasSubagentsSet.add(main.sessionId);
     }
+  }
+
+  // Determine which providers have sessions
+  const activeSources = new Set<string>();
+  for (const s of sessions) {
+    activeSources.add(s.source || "kova");
   }
 
   const handleSelect = useCallback(
@@ -256,6 +346,14 @@ export default function Sidebar() {
       setCurrentSession(id);
     },
     [setCurrentSession]
+  );
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, session: SessionInfo) => {
+      e.preventDefault();
+      setCtxMenu({ x: e.clientX, y: e.clientY, session });
+    },
+    []
   );
 
   // Keyboard shortcut
@@ -300,11 +398,18 @@ export default function Sidebar() {
     document.addEventListener("mouseup", onUp);
   }, [setSidebarWidth]);
 
-  const srcBadges = [
+  // Only show filter badges for providers that have sessions
+  const allBadges = [
     { key: "kova", label: "kova" },
     { key: "claude", label: "claude" },
     { key: "codex", label: "codex" },
+    { key: "kimi", label: "kimi" },
+    { key: "gemini", label: "gemini" },
+    { key: "copilot", label: "copilot" },
+    { key: "factory", label: "factory" },
+    { key: "opencode", label: "opencode" },
   ];
+  const srcBadges = allBadges.filter(b => activeSources.has(b.key));
 
   return (
     <div
@@ -324,7 +429,7 @@ export default function Sidebar() {
           <input
             ref={searchRef}
             type="text"
-            placeholder="Search sessions (3+ chars: full-text)"
+            placeholder="Search sessions (2+ chars: full-text)"
             autoComplete="off"
             spellCheck={false}
             value={localSearch}
@@ -350,17 +455,36 @@ export default function Sidebar() {
             <label key={key} className="source-filter">
               <input
                 type="checkbox"
-                checked={(sourceFilters as Record<string, boolean>)[key]}
+                checked={sourceFilters[key] !== false}
                 onChange={() => toggleSourceFilter(key)}
               />
               <span
-                className={`source-filter-label ${(sourceFilters as Record<string, boolean>)[key] ? "active" : "inactive"}`}
+                className={`source-filter-label ${sourceFilters[key] !== false ? "active" : "inactive"}`}
                 data-source={key}
               >
                 {label}
               </span>
             </label>
           ))}
+        </div>
+
+        {/* Browse / Archived tabs */}
+        <div className="sidebar-tabs">
+          <button
+            className={`sidebar-tab ${sidebarTab === "browse" ? "active" : ""}`}
+            onClick={() => setSidebarTab("browse")}
+          >
+            browse
+          </button>
+          <button
+            className={`sidebar-tab ${sidebarTab === "archived" ? "active" : ""}`}
+            onClick={() => setSidebarTab("archived")}
+          >
+            archived
+            {archivedSessionIds.size > 0 && (
+              <span className="sidebar-tab-count">{archivedSessionIds.size}</span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -398,7 +522,7 @@ export default function Sidebar() {
         <div className="session-list scroller">
           {filteredSessions.length === 0 ? (
             <div className="session-list-empty">
-              {searchQuery ? "No matches" : "No sessions"}
+              {searchQuery ? "No matches" : sidebarTab === "archived" ? "No archived sessions" : "No sessions"}
             </div>
           ) : (
             filteredSessions.map((s) => {
@@ -406,6 +530,8 @@ export default function Sidebar() {
               const children = childrenOf.get(s.sessionId) || [];
               const childIsSelected = children.some(c => c.sessionId === currentSessionId);
               const isExpanded = expandedGroups.has(s.sessionId) || childIsSelected;
+              const isLive = activeSessions.has(s.sessionId);
+              const isArchived = archivedSessionIds.has(s.sessionId);
 
               return (
                 <div key={s.sessionId}>
@@ -416,9 +542,12 @@ export default function Sidebar() {
                     hasSubagents={hasSubagentsSet.has(s.sessionId)}
                     isExpanded={isExpanded}
                     isSelected={currentSessionId === s.sessionId}
+                    isLive={isLive}
+                    isArchived={isArchived}
                     compact={compactSidebar}
                     onSelect={handleSelect}
                     onToggleExpand={toggleGroupExpanded}
+                    onContextMenu={handleContextMenu}
                   />
                   {children.length > 0 && isExpanded && (
                     <div className="subagent-children">
@@ -431,9 +560,12 @@ export default function Sidebar() {
                           hasSubagents={hasSubagentsSet.has(c.sessionId)}
                           isExpanded={false}
                           isSelected={currentSessionId === c.sessionId}
+                          isLive={activeSessions.has(c.sessionId)}
+                          isArchived={archivedSessionIds.has(c.sessionId)}
                           compact={compactSidebar}
                           onSelect={handleSelect}
                           onToggleExpand={toggleGroupExpanded}
+                          onContextMenu={handleContextMenu}
                         />
                       ))}
                     </div>
@@ -443,6 +575,17 @@ export default function Sidebar() {
             })
           )}
         </div>
+      )}
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          session={ctxMenu.session}
+          isArchived={archivedSessionIds.has(ctxMenu.session.sessionId)}
+          onClose={() => setCtxMenu(null)}
+        />
       )}
 
       {/* Settings button + resize handle */}

@@ -16,7 +16,7 @@ export function normalizeClaudeEntry(
   if (e.type === "user" || e.type === "assistant") {
     const msg = (e.message || {}) as Record<string, unknown>;
     const role = (msg.role as string) || e.type;
-    let content = msg.content;
+    const content = msg.content;
     const nc: Record<string, unknown>[] = [];
     const toolResults: NormalizedMessage[] = [];
 
@@ -163,15 +163,121 @@ export function normalizeCodexEntry(e: RawEntry): NormalizedMessage | null {
   return null;
 }
 
+/** Normalize Kimi content: string | array of {type: "think"|"text", text} */
+export function normalizeKimiEntry(e: RawEntry): NormalizedMessage | null {
+  const msg = (e.message || e) as Record<string, unknown>;
+  const role = (msg.role as string) || e.type;
+  if (role !== "user" && role !== "assistant") return null;
+
+  const content = msg.content;
+  const nc: Record<string, unknown>[] = [];
+
+  if (typeof content === "string") {
+    nc.push({ type: "text", text: content });
+  } else if (Array.isArray(content)) {
+    for (const block of content as Record<string, unknown>[]) {
+      if (!block) continue;
+      if (block.type === "think" && block.text) {
+        nc.push({ type: "thinking", thinking: block.text });
+      } else if (block.type === "text" && block.text) {
+        nc.push({ type: "text", text: block.text });
+      } else if (typeof block === "string") {
+        nc.push({ type: "text", text: block });
+      } else if (block.text) {
+        nc.push({ type: "text", text: block.text });
+      }
+    }
+  }
+
+  if (nc.length === 0) return null;
+
+  return {
+    type: "message",
+    timestamp: e.timestamp,
+    message: {
+      role,
+      content: nc as unknown as string,
+    },
+  };
+}
+
+/** Normalize simple message entries (gemini, opencode, copilot, factory) */
+export function normalizeSimpleEntry(e: RawEntry): NormalizedMessage | null {
+  const msg = (e.message || e) as Record<string, unknown>;
+  const role = (msg.role as string) || e.type;
+  if (role !== "user" && role !== "assistant" && role !== "model") return null;
+
+  const normalizedRole = role === "model" ? "assistant" : role;
+  const content = msg.content;
+
+  if (typeof content === "string") {
+    return {
+      type: "message",
+      timestamp: e.timestamp,
+      message: {
+        role: normalizedRole,
+        content: [{ type: "text", text: content }] as unknown as string,
+      },
+    };
+  }
+
+  if (Array.isArray(content)) {
+    const nc = (content as Record<string, unknown>[]).map(b => {
+      if (b.type === "text") return b;
+      if (typeof b === "string") return { type: "text", text: b };
+      if (b.text) return { type: "text", text: b.text };
+      return { type: "text", text: JSON.stringify(b) };
+    });
+    return {
+      type: "message",
+      timestamp: e.timestamp,
+      message: {
+        role: normalizedRole,
+        content: nc as unknown as string,
+      },
+    };
+  }
+
+  return null;
+}
+
 export function normalizeEntries(entries: RawEntry[]): NormalizedMessage[] {
   const toolNameMap = new Map<string, string>();
   const normalized: NormalizedMessage[] = [];
+
+  // Detect provider from first entry patterns
+  let detectedProvider = "";
+  for (const e of entries) {
+    if (e.type === "response_item" || e.type === "session_meta") { detectedProvider = "codex"; break; }
+    if (e.type === "user" || e.type === "assistant") {
+      const msg = (e.message || {}) as Record<string, unknown>;
+      if (msg.role && Array.isArray(msg.content)) {
+        const first = (msg.content as Record<string, unknown>[])[0];
+        if (first && (first.type === "think" || first.type === "text")) {
+          detectedProvider = "kimi";
+        }
+      }
+      if (!detectedProvider) detectedProvider = "claude";
+      break;
+    }
+    if (e.type === "message") {
+      const msg = (e.message || e) as Record<string, unknown>;
+      if (typeof msg.content === "string" && (msg.role === "user" || msg.role === "assistant" || msg.role === "model")) {
+        detectedProvider = "simple";
+        break;
+      }
+    }
+  }
 
   for (const e of entries) {
     const t = e.type;
     let norm: NormalizedMessage | NormalizedMessage[] | null = null;
 
-    if (
+    if (detectedProvider === "kimi" && (t === "user" || t === "assistant" || t === "message")) {
+      norm = normalizeKimiEntry(e);
+    } else if (detectedProvider === "simple" && (t === "user" || t === "assistant" || t === "message" || t === "model")) {
+      norm = normalizeSimpleEntry(e);
+    } else if (
       ["user", "assistant", "progress", "queue-operation", "system", "result", "debug"].includes(t)
     ) {
       norm = normalizeClaudeEntry(e);

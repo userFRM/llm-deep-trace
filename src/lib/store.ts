@@ -17,17 +17,22 @@ interface AppState {
   loading: boolean;
   sseConnected: boolean;
   searchQuery: string;
-  sourceFilters: { kova: boolean; claude: boolean; codex: boolean };
+  sourceFilters: Record<string, boolean>;
   expandedGroups: Set<string>;
   allThinkingExpanded: boolean;
   blockExpansion: BlockExpansion;
   treePanelOpen: boolean;
+  treePanelManualClose: boolean;
   theme: string;
   sidebarWidth: number;
+  treePanelWidth: number;
   settingsOpen: boolean;
   blockColors: BlockColors;
   settings: AppSettings;
   scrollTargetIndex: number | null;
+  archivedSessionIds: Set<string>;
+  sidebarTab: "browse" | "archived";
+  activeSessions: Set<string>;
 
   setSessions: (sessions: SessionInfo[]) => void;
   setCurrentSession: (id: string | null) => void;
@@ -40,13 +45,19 @@ interface AppState {
   toggleAllThinking: () => void;
   toggleBlockExpansion: (category: BlockCategory) => void;
   setTreePanelOpen: (open: boolean) => void;
+  setTreePanelManualClose: (val: boolean) => void;
   setTheme: (theme: string) => void;
   setSidebarWidth: (w: number) => void;
+  setTreePanelWidth: (w: number) => void;
   setSettingsOpen: (open: boolean) => void;
   setBlockColor: (key: keyof BlockColors, color: string) => void;
   resetBlockColor: (key: keyof BlockColors) => void;
   setSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
   setScrollTargetIndex: (idx: number | null) => void;
+  archiveSession: (sessionId: string) => void;
+  unarchiveSession: (sessionId: string) => void;
+  setSidebarTab: (tab: "browse" | "archived") => void;
+  setActiveSessions: (ids: Set<string>) => void;
   initFromLocalStorage: () => void;
   applyFilter: () => void;
 }
@@ -104,6 +115,31 @@ function loadSidebarWidth(): number {
   return 280;
 }
 
+function loadTreePanelWidth(): number {
+  try {
+    const raw = localStorage.getItem("llm-deep-trace-tree-w");
+    if (raw) {
+      const w = parseInt(raw, 10);
+      if (w >= 240 && w <= 600) return w;
+    }
+  } catch { /* ignore */ }
+  return 380;
+}
+
+function loadArchivedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem("llm-deep-trace-archived");
+    if (raw) return new Set(JSON.parse(raw));
+  } catch { /* ignore */ }
+  return new Set();
+}
+
+function saveArchivedIds(ids: Set<string>) {
+  try {
+    localStorage.setItem("llm-deep-trace-archived", JSON.stringify([...ids]));
+  } catch { /* ignore */ }
+}
+
 function buildGroupedSessions(list: SessionInfo[]): SessionInfo[] {
   const childrenOf = new Map<string, SessionInfo[]>();
   const childIds = new Set<string>();
@@ -153,6 +189,17 @@ function buildGroupedSessions(list: SessionInfo[]): SessionInfo[] {
   return result;
 }
 
+const DEFAULT_SOURCE_FILTERS: Record<string, boolean> = {
+  kova: true,
+  claude: true,
+  codex: true,
+  kimi: true,
+  gemini: true,
+  copilot: true,
+  factory: true,
+  opencode: true,
+};
+
 export const useStore = create<AppState>((set, get) => ({
   sessions: [],
   filteredSessions: [],
@@ -162,17 +209,22 @@ export const useStore = create<AppState>((set, get) => ({
   loading: false,
   sseConnected: false,
   searchQuery: "",
-  sourceFilters: { kova: true, claude: true, codex: true },
+  sourceFilters: { ...DEFAULT_SOURCE_FILTERS },
   expandedGroups: new Set<string>(),
   allThinkingExpanded: false,
   blockExpansion: { thinking: false, exec: false, file: false, web: false, browser: false, msg: false, agent: false },
   treePanelOpen: false,
+  treePanelManualClose: false,
   theme: "system",
   sidebarWidth: 280,
+  treePanelWidth: 380,
   settingsOpen: false,
   blockColors: { ...DEFAULT_BLOCK_COLORS },
   settings: { ...DEFAULT_SETTINGS },
   scrollTargetIndex: null,
+  archivedSessionIds: new Set<string>(),
+  sidebarTab: "browse",
+  activeSessions: new Set<string>(),
 
   setSessions: (sessions) => {
     sessions.sort((a, b) => {
@@ -180,7 +232,17 @@ export const useStore = create<AppState>((set, get) => ({
       if (b.isActive && !b.isDeleted && !(a.isActive && !a.isDeleted)) return 1;
       return (b.lastUpdated || 0) - (a.lastUpdated || 0);
     });
-    set({ sessions });
+
+    // Detect active sessions (modified in last 60s)
+    const now = Date.now();
+    const active = new Set<string>();
+    for (const s of sessions) {
+      if (s.lastUpdated && now - s.lastUpdated < 60000) {
+        active.add(s.sessionId);
+      }
+    }
+
+    set({ sessions, activeSessions: active });
     get().applyFilter();
   },
 
@@ -206,8 +268,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   toggleSourceFilter: (source) => {
     const filters = { ...get().sourceFilters };
-    (filters as Record<string, boolean>)[source] =
-      !(filters as Record<string, boolean>)[source];
+    filters[source] = !filters[source];
     set({ sourceFilters: filters });
     get().applyFilter();
   },
@@ -229,7 +290,6 @@ export const useStore = create<AppState>((set, get) => ({
   toggleBlockExpansion: (category) => {
     const expansion = { ...get().blockExpansion };
     expansion[category] = !expansion[category];
-    // Sync thinking toggle with allThinkingExpanded for backwards compat
     if (category === "thinking") {
       set({ blockExpansion: expansion, allThinkingExpanded: expansion.thinking });
     } else {
@@ -238,6 +298,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setTreePanelOpen: (open) => set({ treePanelOpen: open }),
+  setTreePanelManualClose: (val) => set({ treePanelManualClose: val }),
 
   setTheme: (theme) => {
     set({ theme });
@@ -265,6 +326,14 @@ export const useStore = create<AppState>((set, get) => ({
     } catch { /* ignore */ }
   },
 
+  setTreePanelWidth: (w) => {
+    const clamped = Math.max(240, Math.min(600, w));
+    set({ treePanelWidth: clamped });
+    try {
+      localStorage.setItem("llm-deep-trace-tree-w", String(clamped));
+    } catch { /* ignore */ }
+  },
+
   setSettingsOpen: (open) => set({ settingsOpen: open }),
 
   setScrollTargetIndex: (idx) => set({ scrollTargetIndex: idx }),
@@ -287,21 +356,51 @@ export const useStore = create<AppState>((set, get) => ({
     saveSettings(settings);
   },
 
+  archiveSession: (sessionId) => {
+    const ids = new Set(get().archivedSessionIds);
+    ids.add(sessionId);
+    set({ archivedSessionIds: ids });
+    saveArchivedIds(ids);
+    get().applyFilter();
+  },
+
+  unarchiveSession: (sessionId) => {
+    const ids = new Set(get().archivedSessionIds);
+    ids.delete(sessionId);
+    set({ archivedSessionIds: ids });
+    saveArchivedIds(ids);
+    get().applyFilter();
+  },
+
+  setSidebarTab: (tab) => {
+    set({ sidebarTab: tab });
+    get().applyFilter();
+  },
+
+  setActiveSessions: (ids) => set({ activeSessions: ids }),
+
   initFromLocalStorage: () => {
     set({
       expandedGroups: loadExpandedGroups(),
       blockColors: loadBlockColors(),
       settings: loadSettings(),
       sidebarWidth: loadSidebarWidth(),
+      treePanelWidth: loadTreePanelWidth(),
+      archivedSessionIds: loadArchivedIds(),
     });
   },
 
   applyFilter: () => {
-    const { sessions, searchQuery, sourceFilters } = get();
+    const { sessions, searchQuery, sourceFilters, archivedSessionIds, sidebarTab } = get();
     const q = searchQuery.toLowerCase().trim();
+    const isArchiveTab = sidebarTab === "archived";
     const filtered = sessions.filter((s) => {
       const src = s.source || "kova";
-      if (!(sourceFilters as Record<string, boolean>)[src]) return false;
+      if (sourceFilters[src] === false) return false;
+      // Archive filtering
+      const isArchived = archivedSessionIds.has(s.sessionId);
+      if (isArchiveTab && !isArchived) return false;
+      if (!isArchiveTab && isArchived) return false;
       if (!q) return true;
       const label = (s.label || s.title || s.key || "").toLowerCase();
       const preview = (s.preview || "").toLowerCase();

@@ -176,8 +176,6 @@ export function listClaudeSessions(): SessionInfo[] {
       projectLabel = "~/" + (idx >= 0 ? projectLabel.slice(idx + 1) : projectLabel);
     }
 
-    // Collect parent session files and track which have subagents
-    // Structure: <projectDir>/<uuid>.jsonl  +  <projectDir>/<uuid>/subagents/agent-XXXXX.jsonl
     const parentSessionIds = new Set<string>();
     const sessionFileMeta: Array<{ filePath: string; isSubagent: boolean; parentSessionId?: string }> = [];
 
@@ -185,21 +183,18 @@ export function listClaudeSessions(): SessionInfo[] {
       const fullPath = path.join(projectDir, f);
       const stat = fs.statSync(fullPath);
       if (stat.isFile() && f.endsWith(".jsonl") && !f.endsWith(".lock") && !f.endsWith(".bak")) {
-        // This is a parent session file
         const uuid = f.replace(/\.jsonl$/, "");
         parentSessionIds.add(uuid);
         sessionFileMeta.push({ filePath: fullPath, isSubagent: false });
       }
     }
 
-    // Now scan UUID subdirectories for subagents/
     for (const f of fs.readdirSync(projectDir)) {
       const fullPath = path.join(projectDir, f);
       const stat = fs.statSync(fullPath);
       if (!stat.isDirectory()) continue;
       const subagentsDir = path.join(fullPath, "subagents");
       if (!fs.existsSync(subagentsDir)) continue;
-      // f is the parent session UUID
       const parentId = f;
       for (const agentFile of fs.readdirSync(subagentsDir)) {
         if (!agentFile.endsWith(".jsonl") || agentFile.endsWith(".lock") || agentFile.endsWith(".bak")) continue;
@@ -211,9 +206,6 @@ export function listClaudeSessions(): SessionInfo[] {
       }
     }
 
-    const jsonlFiles: string[] = []; // kept for compat — unused below
-
-    // Build set of parent UUIDs that have subagents (for hasSubagents flag)
     const uuidsWithSubagents = new Set(
       sessionFileMeta.filter(m => m.isSubagent).map(m => m.parentSessionId).filter(Boolean)
     );
@@ -257,10 +249,8 @@ export function listClaudeSessions(): SessionInfo[] {
       }
 
       const sessionId = path.basename(filePath, ".jsonl");
-      // For subagents: key is "agent-XXXXX" (short filename without extension)
-      // For parents: key is the project label
       const sessionKey = isSubagent
-        ? sessionId  // e.g. "agent-ac025c7"
+        ? sessionId
         : projectLabel;
       const hasSubagents = !isSubagent && uuidsWithSubagents.has(sessionId);
 
@@ -268,7 +258,7 @@ export function listClaudeSessions(): SessionInfo[] {
         sessionId,
         key: sessionKey,
         label: isSubagent
-          ? "\u21b3 " + sessionId  // e.g. "↳ agent-ac025c7"
+          ? "\u21b3 " + sessionId
           : projectLabel,
         lastUpdated: updatedAt,
         channel: "claude-code",
@@ -383,6 +373,355 @@ export function listCodexSessions(): SessionInfo[] {
   return sessions;
 }
 
+// ── Kimi ──
+
+export function listKimiSessions(): SessionInfo[] {
+  const kimiDir = path.join(HOME, ".kimi", "sessions");
+  const sessions: SessionInfo[] = [];
+  if (!fs.existsSync(kimiDir)) return sessions;
+
+  try {
+    for (const f of fs.readdirSync(kimiDir)) {
+      const fullPath = path.join(kimiDir, f);
+      if (!f.endsWith(".jsonl")) continue;
+      try {
+        const entries = parseJsonl(fullPath);
+        let updatedAt = 0;
+        try { updatedAt = Math.floor(fs.statSync(fullPath).mtimeMs); } catch { /* */ }
+
+        let preview = "";
+        let msgCount = 0;
+        for (const e of entries) {
+          if (e.type === "message" || e.type === "user" || e.type === "assistant") {
+            msgCount++;
+            const msg = (e.message || e) as Record<string, unknown>;
+            const role = (msg.role as string) || e.type;
+            if (role === "user" && !preview) {
+              const content = msg.content;
+              if (typeof content === "string") {
+                preview = content.slice(0, 120);
+              } else if (Array.isArray(content)) {
+                for (const block of content as Record<string, unknown>[]) {
+                  if (block.type === "text" && block.text) {
+                    preview = (block.text as string).slice(0, 120);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        const sessionId = path.basename(f, ".jsonl");
+        sessions.push({
+          sessionId,
+          key: sessionId,
+          label: preview ? preview.slice(0, 60) : sessionId.slice(0, 14),
+          lastUpdated: updatedAt,
+          channel: "kimi",
+          chatType: "direct",
+          messageCount: msgCount,
+          preview,
+          isActive: true,
+          isDeleted: false,
+          isSubagent: false,
+          compactionCount: 0,
+          source: "kimi",
+          filePath: fullPath,
+        });
+      } catch { /* skip bad files */ }
+    }
+  } catch { /* dir not readable */ }
+
+  sessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
+  return sessions;
+}
+
+// ── Gemini CLI ──
+
+export function listGeminiSessions(): SessionInfo[] {
+  const geminiDir = path.join(HOME, ".gemini", "tmp");
+  const sessions: SessionInfo[] = [];
+  if (!fs.existsSync(geminiDir)) return sessions;
+
+  function scanDir(dir: string) {
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scanDir(fullPath);
+        } else if (entry.name.endsWith(".json")) {
+          try {
+            const raw = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
+            const messages = Array.isArray(raw) ? raw : (raw.messages || raw.history || []);
+            if (!Array.isArray(messages) || messages.length === 0) return;
+
+            let updatedAt = 0;
+            try { updatedAt = Math.floor(fs.statSync(fullPath).mtimeMs); } catch { /* */ }
+
+            let preview = "";
+            let msgCount = 0;
+            for (const m of messages as Record<string, unknown>[]) {
+              const role = (m.role as string) || "";
+              if (role === "user" || role === "model") msgCount++;
+              if (role === "user" && !preview) {
+                if (typeof m.content === "string") {
+                  preview = (m.content as string).slice(0, 120);
+                } else if (m.parts && Array.isArray(m.parts)) {
+                  for (const p of m.parts as Record<string, unknown>[]) {
+                    if (typeof p === "string") { preview = (p as unknown as string).slice(0, 120); break; }
+                    if (p.text) { preview = (p.text as string).slice(0, 120); break; }
+                  }
+                }
+              }
+            }
+
+            const sessionId = path.basename(entry.name, ".json");
+            sessions.push({
+              sessionId,
+              key: sessionId,
+              label: preview ? preview.slice(0, 60) : sessionId.slice(0, 14),
+              lastUpdated: updatedAt,
+              channel: "gemini",
+              chatType: "direct",
+              messageCount: msgCount,
+              preview,
+              isActive: true,
+              isDeleted: false,
+              isSubagent: false,
+              compactionCount: 0,
+              source: "gemini",
+              filePath: fullPath,
+            });
+          } catch { /* skip bad files */ }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  scanDir(geminiDir);
+  sessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
+  return sessions;
+}
+
+// ── GitHub Copilot CLI ──
+
+export function listCopilotSessions(): SessionInfo[] {
+  const copilotDir = path.join(HOME, ".copilot", "session-state");
+  const sessions: SessionInfo[] = [];
+  if (!fs.existsSync(copilotDir)) return sessions;
+
+  function scanDir(dir: string) {
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scanDir(fullPath);
+        } else if (entry.name.endsWith(".json") || entry.name.endsWith(".jsonl")) {
+          try {
+            let messages: Record<string, unknown>[] = [];
+            if (entry.name.endsWith(".jsonl")) {
+              messages = parseJsonl(fullPath) as unknown as Record<string, unknown>[];
+            } else {
+              const raw = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
+              messages = Array.isArray(raw) ? raw : (raw.messages || []);
+            }
+            if (messages.length === 0) return;
+
+            let updatedAt = 0;
+            try { updatedAt = Math.floor(fs.statSync(fullPath).mtimeMs); } catch { /* */ }
+
+            let preview = "";
+            let msgCount = 0;
+            for (const m of messages) {
+              const role = (m.role as string) || "";
+              if (role === "user" || role === "assistant") msgCount++;
+              if (role === "user" && !preview) {
+                if (typeof m.content === "string") preview = (m.content as string).slice(0, 120);
+              }
+            }
+
+            const sessionId = path.basename(entry.name).replace(/\.(json|jsonl)$/, "");
+            sessions.push({
+              sessionId,
+              key: sessionId,
+              label: preview ? preview.slice(0, 60) : sessionId.slice(0, 14),
+              lastUpdated: updatedAt,
+              channel: "copilot",
+              chatType: "direct",
+              messageCount: msgCount,
+              preview,
+              isActive: true,
+              isDeleted: false,
+              isSubagent: false,
+              compactionCount: 0,
+              source: "copilot",
+              filePath: fullPath,
+            });
+          } catch { /* skip bad files */ }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  scanDir(copilotDir);
+  sessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
+  return sessions;
+}
+
+// ── Factory Droid ──
+
+export function listFactorySessions(): SessionInfo[] {
+  const dirs = [
+    path.join(HOME, ".factory", "sessions"),
+    path.join(HOME, ".factory", "projects"),
+  ];
+  const sessions: SessionInfo[] = [];
+
+  function scanDir(dir: string) {
+    if (!fs.existsSync(dir)) return;
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scanDir(fullPath);
+        } else if (entry.name.endsWith(".jsonl") && !entry.name.endsWith(".lock") && !entry.name.endsWith(".bak")) {
+          try {
+            const entries = parseJsonl(fullPath);
+            let updatedAt = 0;
+            try { updatedAt = Math.floor(fs.statSync(fullPath).mtimeMs); } catch { /* */ }
+
+            let preview = "";
+            let msgCount = 0;
+            for (const e of entries) {
+              if (e.type === "user" || e.type === "assistant" || e.type === "message") {
+                const msg = (e.message || e) as Record<string, unknown>;
+                const role = (msg.role as string) || e.type;
+                if (role === "user" || role === "assistant") msgCount++;
+                if (role === "user" && !preview) {
+                  const content = msg.content;
+                  if (typeof content === "string") preview = content.slice(0, 120);
+                  else if (Array.isArray(content)) {
+                    for (const b of content as Record<string, unknown>[]) {
+                      if ((b.type === "text" || b.type === "input_text") && b.text) {
+                        preview = (b.text as string).slice(0, 120);
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            const sessionId = path.basename(entry.name, ".jsonl");
+            sessions.push({
+              sessionId,
+              key: sessionId,
+              label: preview ? preview.slice(0, 60) : sessionId.slice(0, 14),
+              lastUpdated: updatedAt,
+              channel: "factory",
+              chatType: "direct",
+              messageCount: msgCount,
+              preview,
+              isActive: true,
+              isDeleted: false,
+              isSubagent: false,
+              compactionCount: 0,
+              source: "factory",
+              filePath: fullPath,
+            });
+          } catch { /* skip bad files */ }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  for (const d of dirs) scanDir(d);
+  sessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
+  return sessions;
+}
+
+// ── OpenCode ──
+
+export function listOpenCodeSessions(): SessionInfo[] {
+  const ocDir = path.join(HOME, ".local", "share", "opencode", "storage", "session");
+  const sessions: SessionInfo[] = [];
+  if (!fs.existsSync(ocDir)) return sessions;
+
+  function scanDir(dir: string) {
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scanDir(fullPath);
+        } else if (entry.name.endsWith(".json")) {
+          try {
+            const raw = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
+            const messages = raw.messages || [];
+            if (!Array.isArray(messages) || messages.length === 0) return;
+
+            let updatedAt = 0;
+            try { updatedAt = Math.floor(fs.statSync(fullPath).mtimeMs); } catch { /* */ }
+
+            const title = (raw.title as string) || "";
+            let preview = "";
+            let msgCount = 0;
+            for (const m of messages as Record<string, unknown>[]) {
+              const role = (m.role as string) || "";
+              if (role === "user" || role === "assistant") msgCount++;
+              if (role === "user" && !preview) {
+                if (typeof m.content === "string") preview = (m.content as string).slice(0, 120);
+              }
+            }
+
+            const sessionId = (raw.id as string) || path.basename(entry.name, ".json");
+            sessions.push({
+              sessionId,
+              key: sessionId,
+              title: title || undefined,
+              label: title || (preview ? preview.slice(0, 60) : sessionId.slice(0, 14)),
+              lastUpdated: updatedAt,
+              channel: "opencode",
+              chatType: "direct",
+              messageCount: msgCount,
+              preview,
+              isActive: true,
+              isDeleted: false,
+              isSubagent: false,
+              compactionCount: 0,
+              source: "opencode",
+              filePath: fullPath,
+            });
+          } catch { /* skip bad files */ }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  scanDir(ocDir);
+  sessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
+  return sessions;
+}
+
+// ── Aggregate all providers ──
+
+export function getAllSessions(): SessionInfo[] {
+  const all = [
+    ...listKovaSessions(),
+    ...listClaudeSessions(),
+    ...listCodexSessions(),
+    ...listKimiSessions(),
+    ...listGeminiSessions(),
+    ...listCopilotSessions(),
+    ...listFactorySessions(),
+    ...listOpenCodeSessions(),
+  ];
+  all.sort((a, b) => b.lastUpdated - a.lastUpdated);
+  return all;
+}
+
+// ── File path resolver ──
+
 export function getSessionFilePath(
   sessionId: string,
   source: string
@@ -430,28 +769,33 @@ export function getSessionFilePath(
     }
     return findRollout(codexDir);
   }
+
+  // For new providers, search all sessions by filePath
+  if (["kimi", "gemini", "copilot", "factory", "opencode"].includes(source)) {
+    const all = getAllSessions();
+    const match = all.find(s => s.sessionId === sessionId && s.source === source);
+    return match?.filePath || null;
+  }
+
   // kova
   const files = findSessionFiles();
   const info = files[sessionId];
   return info ? info.path : null;
 }
 
+// ── Search ──
+
 export function searchSessions(
   query: string,
-  limit: number = 20
+  limit: number = 50
 ): { session: SessionInfo; snippet: string }[] {
   const q = query.toLowerCase();
-  const allSessions = [
-    ...listKovaSessions(),
-    ...listClaudeSessions(),
-    ...listCodexSessions(),
-  ];
+  const allSessions = getAllSessions();
   const results: { session: SessionInfo; snippet: string }[] = [];
 
   for (const session of allSessions) {
     if (results.length >= limit) break;
 
-    // Check title/label/preview first
     const titleMatch =
       (session.title || "").toLowerCase().includes(q) ||
       (session.label || "").toLowerCase().includes(q) ||
@@ -467,7 +811,6 @@ export function searchSessions(
       continue;
     }
 
-    // Search message content
     if (!session.filePath) continue;
     try {
       const data = fs.readFileSync(session.filePath, "utf-8");
@@ -475,7 +818,6 @@ export function searchSessions(
       const idx = lowerData.indexOf(q);
       if (idx === -1) continue;
 
-      // Extract snippet around the match
       const start = Math.max(0, idx - 40);
       const end = Math.min(data.length, idx + q.length + 60);
       let snippet = data.slice(start, end).replace(/\n/g, " ").replace(/[{}"\\]/g, " ").replace(/\s+/g, " ").trim();
@@ -488,10 +830,79 @@ export function searchSessions(
   return results;
 }
 
+// ── Messages loader ──
+
 export function getSessionMessages(
   sessionId: string,
   source: string
 ): RawEntry[] | null {
+  // For JSON-based providers (gemini, opencode), convert to RawEntry format
+  if (source === "gemini") {
+    const fp = getSessionFilePath(sessionId, source);
+    if (!fp) return null;
+    try {
+      const raw = JSON.parse(fs.readFileSync(fp, "utf-8"));
+      const messages = Array.isArray(raw) ? raw : (raw.messages || raw.history || []);
+      return (messages as Record<string, unknown>[]).map((m) => {
+        const role = (m.role as string) || "user";
+        const content = typeof m.content === "string"
+          ? m.content
+          : m.parts
+            ? (m.parts as Record<string, unknown>[]).map(p => typeof p === "string" ? p : (p.text || "")).join("\n")
+            : "";
+        return {
+          type: role === "model" ? "assistant" : "user",
+          timestamp: (m.timestamp as string) || undefined,
+          message: { role: role === "model" ? "assistant" : "user", content },
+        } as RawEntry;
+      });
+    } catch { return null; }
+  }
+
+  if (source === "opencode") {
+    const fp = getSessionFilePath(sessionId, source);
+    if (!fp) return null;
+    try {
+      const raw = JSON.parse(fs.readFileSync(fp, "utf-8"));
+      const messages = raw.messages || [];
+      return (messages as Record<string, unknown>[]).map((m) => {
+        const role = (m.role as string) || "user";
+        const content = (m.content as string) || "";
+        return {
+          type: role,
+          timestamp: (m.time as string) || (m.timestamp as string) || undefined,
+          message: { role, content },
+        } as RawEntry;
+      });
+    } catch { return null; }
+  }
+
+  if (source === "copilot") {
+    const fp = getSessionFilePath(sessionId, source);
+    if (!fp) return null;
+    if (fp.endsWith(".jsonl")) return parseJsonl(fp);
+    try {
+      const raw = JSON.parse(fs.readFileSync(fp, "utf-8"));
+      const messages = Array.isArray(raw) ? raw : (raw.messages || []);
+      return (messages as Record<string, unknown>[]).map((m) => {
+        const role = (m.role as string) || "user";
+        const content = (m.content as string) || "";
+        return {
+          type: role,
+          timestamp: (m.timestamp as string) || undefined,
+          message: { role, content },
+        } as RawEntry;
+      });
+    } catch { return null; }
+  }
+
+  // JSONL-based providers: kimi, factory, claude, codex, kova
+  if (source === "kimi" || source === "factory") {
+    const fp = getSessionFilePath(sessionId, source);
+    if (!fp) return null;
+    return parseJsonl(fp);
+  }
+
   if (source === "claude") {
     const projectsDir = path.join(HOME, ".claude", "projects");
     if (!fs.existsSync(projectsDir)) return null;

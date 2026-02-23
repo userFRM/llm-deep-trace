@@ -145,6 +145,14 @@ export default function SettingsPanel() {
             />
             <span className="settings-toggle-label">Compact sidebar</span>
           </label>
+          <label className="settings-toggle-row">
+            <input
+              type="checkbox"
+              checked={settings.skipPreamble}
+              onChange={(e) => setSetting("skipPreamble", e.target.checked)}
+            />
+            <span className="settings-toggle-label">Skip preamble (hide system messages before first user message)</span>
+          </label>
         </div>
       </div>
     </div>
