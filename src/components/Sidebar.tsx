@@ -65,6 +65,8 @@ function ContextMenu({
 }) {
   const archiveSession = useStore((s) => s.archiveSession);
   const unarchiveSession = useStore((s) => s.unarchiveSession);
+  const starredSessionIds = useStore((s) => s.starredSessionIds);
+  const toggleStarred = useStore((s) => s.toggleStarred);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -123,10 +125,12 @@ function SessionItem({
   isSelected,
   isLive,
   isArchived,
+  isStarred,
   compact,
   onSelect,
   onToggleExpand,
   onContextMenu,
+  onToggleStar,
 }: {
   session: SessionInfo;
   isSubagent: boolean;
@@ -136,10 +140,12 @@ function SessionItem({
   isSelected: boolean;
   isLive: boolean;
   isArchived: boolean;
+  isStarred: boolean;
   compact: boolean;
   onSelect: (id: string) => void;
   onToggleExpand: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, session: SessionInfo) => void;
+  onToggleStar: (id: string) => void;
 }) {
   const label = sessionLabel(session);
   const src = session.source || "kova";
@@ -189,6 +195,18 @@ function SessionItem({
         {isLive && <span className="live-badge-small">live</span>}
         {hasSubagents && <BotSvg />}
         {isSubagent && <span className="subagent-badge">subagent</span>}
+        <button
+          className={`star-btn ${isStarred ? "starred" : ""}`}
+          title={isStarred ? "Unstar" : "Star session"}
+          onClick={(e) => { e.stopPropagation(); onToggleStar(session.sessionId); }}
+        >
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+            {isStarred
+              ? <path d="M8 1l1.8 3.6 4 .6-2.9 2.8.7 4L8 10l-3.6 1.9.7-4L2.2 5.2l4-.6z" fill="#F59E0B"/>
+              : <path d="M8 1l1.8 3.6 4 .6-2.9 2.8.7 4L8 10l-3.6 1.9.7-4L2.2 5.2l4-.6z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+            }
+          </svg>
+        </button>
         <span className="session-time">
           {relativeTime(session.lastUpdated)}
         </span>
@@ -235,6 +253,8 @@ export default function Sidebar() {
   const sidebarTab = useStore((s) => s.sidebarTab);
   const activeSessions = useStore((s) => s.activeSessions);
   const archivedSessionIds = useStore((s) => s.archivedSessionIds);
+  const starredSessionIds = useStore((s) => s.starredSessionIds);
+  const toggleStarred = useStore((s) => s.toggleStarred);
   const setSearchQuery = useStore((s) => s.setSearchQuery);
   const toggleSourceFilter = useStore((s) => s.toggleSourceFilter);
   const toggleGroupExpanded = useStore((s) => s.toggleGroupExpanded);
@@ -560,10 +580,12 @@ export default function Sidebar() {
                     isSelected={currentSessionId === s.sessionId}
                     isLive={isLive}
                     isArchived={isArchived}
+                    isStarred={starredSessionIds.has(s.sessionId)}
                     compact={compactSidebar}
                     onSelect={handleSelect}
                     onToggleExpand={toggleGroupExpanded}
                     onContextMenu={handleContextMenu}
+                    onToggleStar={toggleStarred}
                   />
                   {children.length > 0 && isExpanded && (
                     <div className="subagent-children">
@@ -578,10 +600,12 @@ export default function Sidebar() {
                           isSelected={currentSessionId === c.sessionId}
                           isLive={activeSessions.has(c.sessionId)}
                           isArchived={archivedSessionIds.has(c.sessionId)}
+                          isStarred={starredSessionIds.has(c.sessionId)}
                           compact={compactSidebar}
                           onSelect={handleSelect}
                           onToggleExpand={toggleGroupExpanded}
                           onContextMenu={handleContextMenu}
+                          onToggleStar={toggleStarred}
                         />
                       ))}
                     </div>

@@ -231,6 +231,53 @@ function BlockToggleToolbar({
   );
 }
 
+// ── Pinned Messages Strip ──
+function PinnedStrip({ pinnedIndices, messages, onUnpin, onScrollTo }: {
+  pinnedIndices: number[];
+  messages: NormalizedMessage[];
+  onUnpin: (idx: number) => void;
+  onScrollTo: (idx: number) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const sorted = [...pinnedIndices].sort((a, b) => a - b);
+  return (
+    <div className="pinned-strip">
+      <div className="pinned-strip-header" onClick={() => setOpen(!open)}>
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style={{ marginRight: 5 }}>
+          <path d="M10 2l4 4-2 2-1.5-.5L8 10l.5 4-2-2-3 3-2-2 3-3-2-2 4 .5 2.5-2.5-.5-1.5z" fill="#9B72EF" stroke="#9B72EF" strokeWidth="0.5" strokeLinejoin="round"/>
+        </svg>
+        <span>{sorted.length} pinned</span>
+        <span className="pinned-strip-chevron">{open ? "▲" : "▼"}</span>
+      </div>
+      {open && (
+        <div className="pinned-strip-items">
+          {sorted.map((idx) => {
+            const msg = messages[idx];
+            const preview = (() => {
+              if (!msg) return `message ${idx}`;
+              const role = msg.message?.role || msg.type || "";
+              const content = msg.message?.content;
+              if (typeof content === "string") return content.slice(0, 80);
+              if (Array.isArray(content)) {
+                for (const b of content as unknown as Record<string, unknown>[]) {
+                  if (b.type === "text" && typeof b.text === "string") return b.text.slice(0, 80);
+                }
+              }
+              return `${role} message`;
+            })();
+            return (
+              <div key={idx} className="pinned-strip-item" onClick={() => onScrollTo(idx)}>
+                <span className="pinned-preview">{preview}</span>
+                <button className="pinned-unpin" title="Unpin" onClick={(e) => { e.stopPropagation(); onUnpin(idx); }}>×</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── LLM Ref Popover ──
 function LlmRefPopover({ filePath, onClose }: { filePath: string; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -521,6 +568,8 @@ export default function MainPanel() {
   const activeSessions = useStore((s) => s.activeSessions);
   const hiddenBlockTypes = useStore((s) => s.hiddenBlockTypes);
   const toggleHiddenBlockType = useStore((s) => s.toggleHiddenBlockType);
+  const pinnedMessages = useStore((s) => s.pinnedMessages);
+  const togglePinMessage = useStore((s) => s.togglePinMessage);
 
   const messagesRef = useRef<HTMLDivElement>(null);
   const [searchVisible, setSearchVisible] = useState(false);
@@ -842,6 +891,24 @@ export default function MainPanel() {
       {/* Search bar */}
       <MsgSearchBar visible={searchVisible} onClose={() => setSearchVisible(false)} />
 
+      {/* Pinned messages strip */}
+      {currentSessionId && (pinnedMessages[currentSessionId]?.length ?? 0) > 0 && (
+        <PinnedStrip
+          pinnedIndices={pinnedMessages[currentSessionId]}
+          messages={currentMessages}
+          onUnpin={(idx) => togglePinMessage(currentSessionId, idx)}
+          onScrollTo={(idx) => {
+            const total = currentMessages.length;
+            const needed = total - idx;
+            if (needed > displayCount) setDisplayCount(needed + 10);
+            requestAnimationFrame(() => {
+              const el = messagesRef.current?.querySelector(`[data-msg-index="${idx}"]`);
+              if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); }
+            });
+          }}
+        />
+      )}
+
       {/* Messages */}
       <div
         id="messages-container"
@@ -857,20 +924,33 @@ export default function MainPanel() {
           ) : currentMessages.length === 0 ? (
             <div className="loading-state">No messages</div>
           ) : (
-            visible.map((entry, i) => (
-              <div key={startIdx + i} data-msg-index={startIdx + i}>
-                <MessageRenderer
-                  entry={entry}
-                  allThinkingExpanded={allThinkingExpanded}
-                  blockExpansion={blockExpansion}
-                  blockColors={blockColors}
-                  settings={appSettings}
-                  toolInputsMap={toolInputsMap}
-                  onNavigateSession={handleNavigateToSession}
-                  hiddenBlockTypes={hiddenBlockTypes}
-                />
-              </div>
-            ))
+            visible.map((entry, i) => {
+              const absIdx = startIdx + i;
+              const pinned = currentSessionId ? (pinnedMessages[currentSessionId] || []).includes(absIdx) : false;
+              return (
+                <div key={absIdx} data-msg-index={absIdx} className={`msg-wrap ${pinned ? "msg-pinned" : ""}`}>
+                  <button
+                    className={`pin-btn ${pinned ? "active" : ""}`}
+                    title={pinned ? "Unpin message" : "Pin message"}
+                    onClick={() => currentSessionId && togglePinMessage(currentSessionId, absIdx)}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                      <path d="M10 2l4 4-2 2-1.5-.5L8 10l.5 4-2-2-3 3-2-2 3-3-2-2 4 .5 2.5-2.5-.5-1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill={pinned ? "currentColor" : "none"}/>
+                    </svg>
+                  </button>
+                  <MessageRenderer
+                    entry={entry}
+                    allThinkingExpanded={allThinkingExpanded}
+                    blockExpansion={blockExpansion}
+                    blockColors={blockColors}
+                    settings={appSettings}
+                    toolInputsMap={toolInputsMap}
+                    onNavigateSession={handleNavigateToSession}
+                    hiddenBlockTypes={hiddenBlockTypes}
+                  />
+                </div>
+              );
+            })
           )}
         </div>
       </div>
