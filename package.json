@@ -15,14 +15,20 @@
   "homepage": "https://github.com/userFRM/llm-deep-trace",
   "repository": {
     "type": "git",
-    "url": "https://github.com/userFRM/llm-deep-trace"
+    "url": "git+https://github.com/userFRM/llm-deep-trace.git"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "release:patch": "npm version patch && git push && git push --tags",
+    "release:minor": "npm version minor && git push && git push --tags",
+    "release:major": "npm version major && git push && git push --tags"
   },
   "dependencies": {
     "@xyflow/react": "^12.10.1",
