@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useCallback, useEffect } from "react";
+import React, { useMemo, useCallback, useEffect, useRef } from "react";
 import {
   ReactFlow,
   Node,
@@ -386,10 +386,16 @@ function InnerFlow({
     [turns, label]
   );
 
+  // Fit once on mount only — never re-fit while user is browsing
+  const hasFitted = useRef(false);
   useEffect(() => {
-    const timer = setTimeout(() => fitView({ padding: 0.15 }), 50);
+    if (hasFitted.current || nodes.length === 0) return;
+    hasFitted.current = true;
+    const timer = setTimeout(() => {
+      fitView({ padding: 0.12, minZoom: 0.2, maxZoom: 1.0, duration: 300 });
+    }, 80);
     return () => clearTimeout(timer);
-  }, [nodes, fitView]);
+  }, [nodes.length > 0, fitView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -410,8 +416,7 @@ function InnerFlow({
       edges={edges}
       nodeTypes={nodeTypes}
       onNodeClick={onNodeClick}
-      fitView
-      minZoom={0.3}
+      minZoom={0.15}
       maxZoom={1.5}
       proOptions={{ hideAttribution: true }}
       className="session-tree-flow"
@@ -446,7 +451,7 @@ export default function SessionTree({
         </button>
       </div>
       <div className="tree-panel-body">
-        <ReactFlowProvider>
+        <ReactFlowProvider key={sessionId}>
           <InnerFlow
             messages={messages}
             sessionId={sessionId}
