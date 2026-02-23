@@ -394,7 +394,9 @@ function InnerFlow({
     if (hasFitted.current || nodes.length === 0) return;
     hasFitted.current = true;
     const timer = setTimeout(() => {
-      fitView({ padding: 0.12, minZoom: 0.2, maxZoom: 1.0, duration: 300 });
+      // More padding for small graphs (few turns), less for large ones — prevents over-zooming
+      const padding = nodes.length <= 4 ? 0.35 : nodes.length <= 10 ? 0.2 : 0.12;
+      fitView({ padding, minZoom: 0.15, maxZoom: 0.75, duration: 300 });
     }, 80);
     return () => clearTimeout(timer);
   }, [nodes.length > 0, fitView]); // eslint-disable-line react-hooks/exhaustive-deps
