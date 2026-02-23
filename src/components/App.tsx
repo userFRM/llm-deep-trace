@@ -35,7 +35,7 @@ export default function App() {
   useEffect(() => {
     initFromLocalStorage();
     try {
-      const saved = localStorage.getItem("kova-theme") || "system";
+      const saved = localStorage.getItem("deep-trace-theme") || "system";
       setTheme(saved);
     } catch {
       setTheme("system");

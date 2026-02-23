@@ -5,6 +5,7 @@ import { useStore } from "@/lib/store";
 import { sessionLabel, relativeTime, cleanPreview, copyToClipboard } from "@/lib/client-utils";
 import { SessionInfo } from "@/lib/types";
 import SettingsPanel from "./SettingsPanel";
+import Logo from "./Logo";
 
 const ChevronSvg = () => (
   <svg width="9" height="9" viewBox="0 0 16 16" fill="none">
@@ -430,8 +431,7 @@ export default function Sidebar() {
     >
       <div className="sidebar-header">
         <div className="sidebar-title-row">
-          <span className="sidebar-title">deep-trace</span>
-          <span className="sidebar-subtitle">sessions</span>
+          <Logo />
           <span className="sidebar-count">{sessions.length}</span>
         </div>
 

@@ -334,7 +334,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
     if (effective === "light") root.classList.add("theme-light");
     try {
-      localStorage.setItem("kova-theme", theme);
+      localStorage.setItem("deep-trace-theme", theme);
     } catch {
       // ignore
     }

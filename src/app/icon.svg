@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- background -->
+  <rect width="32" height="32" rx="7" fill="#0D0D0F"/>
+
+  <!-- trace lines -->
+  <line x1="16" y1="5"  x2="16" y2="10" stroke="#9B72EF" stroke-width="1.4" opacity="0.4"/>
+  <line x1="16" y1="10" x2="16" y2="16" stroke="#9B72EF" stroke-width="1.4" opacity="0.4"/>
+  <line x1="16" y1="16" x2="10" y2="16" stroke="#9B72EF" stroke-width="1.4" opacity="0.4"/>
+  <line x1="16" y1="16" x2="22" y2="16" stroke="#9B72EF" stroke-width="1.4" opacity="0.4"/>
+  <line x1="10" y1="16" x2="10" y2="22" stroke="#9B72EF" stroke-width="1.4" opacity="0.4"/>
+  <line x1="22" y1="16" x2="22" y2="22" stroke="#9B72EF" stroke-width="1.4" opacity="0.4"/>
+
+  <!-- dim background dots (5×5 grid, excluding highlighted) -->
+  <circle cx="4"  cy="5"  r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="10" cy="5"  r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="22" cy="5"  r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="28" cy="5"  r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="4"  cy="10" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="10" cy="10" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="22" cy="10" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="28" cy="10" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="4"  cy="16" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="28" cy="16" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="4"  cy="22" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="16" cy="22" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="28" cy="22" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="4"  cy="27" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="10" cy="27" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="16" cy="27" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="22" cy="27" r="1.3" fill="white" opacity="0.12"/>
+  <circle cx="28" cy="27" r="1.3" fill="white" opacity="0.12"/>
+
+  <!-- highlighted purple dots (the trace) -->
+  <circle cx="16" cy="5"  r="2.5" fill="#9B72EF"/>
+  <circle cx="16" cy="10" r="2.5" fill="#9B72EF"/>
+  <circle cx="10" cy="16" r="2.5" fill="#9B72EF"/>
+  <circle cx="16" cy="16" r="2.8" fill="#9B72EF"/>
+  <circle cx="22" cy="16" r="2.5" fill="#9B72EF"/>
+  <circle cx="10" cy="22" r="2.5" fill="#9B72EF"/>
+  <circle cx="22" cy="22" r="2.5" fill="#9B72EF"/>
+</svg>

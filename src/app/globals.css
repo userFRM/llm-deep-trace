@@ -85,16 +85,19 @@ html, body {
   margin-bottom: 12px;
 }
 
-.sidebar-title {
+/* ── App logo ── */
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-3);
+}
+
+.app-logo-name {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-1);
-  letter-spacing: 0.02em;
-}
-
-.sidebar-subtitle {
-  font-size: 12px;
-  color: var(--text-3);
+  letter-spacing: 0.03em;
 }
 
 .sidebar-count {
