@@ -760,12 +760,6 @@ export default function MainPanel() {
             </button>
             {exportOpen && <ExportDropdown messages={currentMessages} sess={sess} onClose={() => setExportOpen(false)} />}
           </div>
-          {currentSessionId && activeSessions.has(currentSessionId) && (
-            <span className="live-badge">
-              <span className="live-badge-dot" />
-              live
-            </span>
-          )}
           <div
             className="live-indicator"
             style={{ color: sseConnected ? "var(--green)" : "var(--red)" }}
@@ -774,7 +768,9 @@ export default function MainPanel() {
               className="live-dot"
               style={{ background: sseConnected ? "var(--green)" : "var(--red)" }}
             />
-            {sseConnected ? "live" : "offline"}
+            {currentSessionId && activeSessions.has(currentSessionId)
+              ? "tailing"
+              : sseConnected ? "connected" : "offline"}
           </div>
         </div>
         <div className="main-toolbar">
