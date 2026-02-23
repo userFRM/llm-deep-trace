@@ -268,9 +268,11 @@ function ToolCallBlock({
         <span className="tc-name-label">{name}</span>
         {!expanded && desc && <span className="tc-desc">{desc}</span>}
       </div>
-      <div className={`tool-call-body ${expanded ? "open" : ""}`}>
-        <ArgsList input={input} />
-      </div>
+      {expanded && (
+        <div className="tool-call-body open">
+          <ArgsList input={input} />
+        </div>
+      )}
     </div>
   );
 }
@@ -353,6 +355,7 @@ function ToolResultBlock({
 
   let bodyHtml = null;
 
+  // Only compute body content when expanded — skip all markdown/highlight work when collapsed
   const renderTerminal = (t: string, maxH?: number) => (
     <div className="tr-terminal copyable" style={maxH ? { maxHeight: maxH } : {}}>
       {t}
@@ -394,6 +397,8 @@ function ToolResultBlock({
     );
   };
 
+  // Only build body when expanded — skip all expensive markdown/highlight work when collapsed
+  if (expanded) {
   // Build special body for "message" tool — speech bubble style
   const isMessageTool = toolName === "message" || toolName === "Message" || toolName === "SendMessage";
 
@@ -606,6 +611,7 @@ function ToolResultBlock({
       }
     }
   }
+  } // end if (expanded)
 
   const summary = getSummary();
 
@@ -879,7 +885,7 @@ function ThinkingLevelChange({ entry }: { entry: NormalizedMessage }) {
 }
 
 // ── Main renderer ──
-export default function MessageRenderer({
+function MessageRenderer({
   entry,
   allThinkingExpanded,
   blockExpansion,
@@ -948,3 +954,5 @@ export default function MessageRenderer({
 
   return null;
 }
+
+export default React.memo(MessageRenderer);
