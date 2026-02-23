@@ -693,38 +693,42 @@ function AssistantMessage({
 }) {
   if (!content) return null;
 
-  const textParts: React.ReactElement[] = [];
-  const toolCallParts: React.ReactElement[] = [];
+  // Separate buckets so each can be independently filtered
+  const textOnlyParts: React.ReactElement[] = []; // plain text/images (hidden by asst-text filter)
+  const thinkingParts: React.ReactElement[] = [];  // thinking blocks (hidden by thinking filter, NOT by asst-text)
+  const toolCallParts: React.ReactElement[] = [];  // tool use blocks (hidden by their own filters)
   const rawMdParts: string[] = [];
 
   if (typeof content === "string") {
-    textParts.push(
+    textOnlyParts.push(
       <div key="t0" className="md-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
     );
     rawMdParts.push(content);
     // Detect embedded images in text
     const imgs = extractImagesFromText(content);
     for (let idx = 0; idx < imgs.length; idx++) {
-      textParts.push(<ImageThumbnail key={`img-s-${idx}`} src={imgs[idx]} />);
+      textOnlyParts.push(<ImageThumbnail key={`img-s-${idx}`} src={imgs[idx]} />);
     }
   } else if (Array.isArray(content)) {
     (content as Record<string, unknown>[]).forEach((block, i) => {
       if (!block) return;
       if (block.type === "image") {
-        textParts.push(<ImageBlock key={`img${i}`} block={block} />);
+        textOnlyParts.push(<ImageBlock key={`img${i}`} block={block} />);
       } else if (block.type === "text" && block.text) {
-        textParts.push(
+        textOnlyParts.push(
           <div key={`t${i}`} className="md-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(block.text as string) }} />
         );
         rawMdParts.push(block.text as string);
         // Detect embedded images in text blocks
         const imgs = extractImagesFromText(block.text as string);
         for (let idx = 0; idx < imgs.length; idx++) {
-          textParts.push(<ImageThumbnail key={`img-t${i}-${idx}`} src={imgs[idx]} />);
+          textOnlyParts.push(<ImageThumbnail key={`img-t${i}-${idx}`} src={imgs[idx]} />);
         }
       } else if (block.type === "thinking" && block.thinking) {
+        // Thinking goes to its own bucket — independently controlled by the thinking filter,
+        // NOT suppressed by the asst-text filter
         if (!hiddenBlockTypes?.has("thinking")) {
-          textParts.push(
+          thinkingParts.push(
             <ThinkingBlock
               key={`th${i}`}
               text={block.thinking as string}
@@ -756,7 +760,7 @@ function AssistantMessage({
       } else {
         const fallbackText = (block.text as string) || (block.content as string) || "";
         if (fallbackText) {
-          textParts.push(
+          textOnlyParts.push(
             <div key={`t${i}`} className="md-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(fallbackText) }} />
           );
           rawMdParts.push(fallbackText);
@@ -767,30 +771,31 @@ function AssistantMessage({
     const obj = content as Record<string, unknown>;
     const fallbackText = (obj.text as string) || (obj.content as string) || "";
     if (fallbackText) {
-      textParts.push(
+      textOnlyParts.push(
         <div key="t0" className="md-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(fallbackText) }} />
       );
       rawMdParts.push(fallbackText);
     }
   }
 
-  if (!textParts.length && !toolCallParts.length) return null;
-  // hideText: suppress prose, only render tool blocks (if any)
-  if (hideText && !toolCallParts.length) return null;
+  // hideText (asst-text filter) suppresses prose but NOT thinking or tool blocks
+  const showText = !hideText && textOnlyParts.length > 0;
+  if (!showText && !thinkingParts.length && !toolCallParts.length) return null;
 
   const combinedMd = rawMdParts.join("\n\n");
 
   return (
     <>
-      {!hideText && textParts.length > 0 && (
+      {showText && (
         <div className="msg">
           <div className="msg-assistant copyable">
-            <div className="msg-text">{textParts}</div>
+            <div className="msg-text">{textOnlyParts}</div>
             <CopyButton text={combinedMd} label="Copy as markdown" />
           </div>
           {showTime && <div className="msg-time">{time}</div>}
         </div>
       )}
+      {thinkingParts}
       {toolCallParts}
     </>
   );
