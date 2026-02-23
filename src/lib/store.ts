@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { SessionInfo, RawEntry, NormalizedMessage, BlockColors, AppSettings, DEFAULT_BLOCK_COLORS, DEFAULT_SETTINGS } from "./types";
 import { normalizeEntries } from "./normalizers";
 
-export type BlockCategory = "thinking" | "exec" | "file" | "web" | "browser" | "msg" | "agent";
+export type BlockCategory = "thinking" | "exec" | "file" | "web" | "browser" | "msg" | "agent" | "user-msg" | "asst-text";
 
 export type BlockExpansion = Record<BlockCategory, boolean>;
 
@@ -259,7 +259,7 @@ export const useStore = create<AppState>((set, get) => ({
   sourceFilters: { ...DEFAULT_SOURCE_FILTERS },
   expandedGroups: new Set<string>(),
   allThinkingExpanded: false,
-  blockExpansion: { thinking: false, exec: false, file: false, web: false, browser: false, msg: false, agent: false },
+  blockExpansion: { thinking: false, exec: false, file: false, web: false, browser: false, msg: false, agent: false, "user-msg": false, "asst-text": false },
   treePanelOpen: false,
   treePanelManualClose: false,
   theme: "system",

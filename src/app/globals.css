@@ -3434,3 +3434,57 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
 .dist-bar-wrap { flex: 1; height: 5px; background: var(--raised); border-radius: 3px; overflow: hidden; }
 .dist-bar { height: 100%; background: #9B72EF; border-radius: 3px; }
 .dist-count { font-size: 12px; color: var(--text-1); width: 36px; text-align: right; }
+
+/* ── Block pill separator ────────── */
+.block-pill-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  align-self: center;
+  flex-shrink: 0;
+  margin: 0 3px;
+}
+
+/* ── Export button + dropdown ──────── */
+.export-btn-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.export-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  z-index: 50;
+  min-width: 188px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.export-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-1);
+  text-align: left;
+  transition: background 0.1s;
+}
+.export-option:hover { background: var(--raised); }
+.export-note {
+  font-size: 10px;
+  color: var(--text-3);
+  padding: 3px 10px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}

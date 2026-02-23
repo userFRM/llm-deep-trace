@@ -679,6 +679,7 @@ function AssistantMessage({
   blockColors,
   autoExpand,
   hiddenBlockTypes,
+  hideText,
 }: {
   content: unknown;
   time: string;
@@ -688,6 +689,7 @@ function AssistantMessage({
   blockColors: BlockColors;
   autoExpand: boolean;
   hiddenBlockTypes?: Set<string>;
+  hideText?: boolean;
 }) {
   if (!content) return null;
 
@@ -773,12 +775,14 @@ function AssistantMessage({
   }
 
   if (!textParts.length && !toolCallParts.length) return null;
+  // hideText: suppress prose, only render tool blocks (if any)
+  if (hideText && !toolCallParts.length) return null;
 
   const combinedMd = rawMdParts.join("\n\n");
 
   return (
     <>
-      {textParts.length > 0 && (
+      {!hideText && textParts.length > 0 && (
         <div className="msg">
           <div className="msg-assistant copyable">
             <div className="msg-text">{textParts}</div>
@@ -933,7 +937,10 @@ function MessageRenderer({
   const time = fmtTime(entry.timestamp);
   const showTime = settings.showTimestamps;
 
-  if (role === "user") return <UserMessage content={msg.content} time={time} showTime={showTime} />;
+  if (role === "user") {
+    if (hiddenBlockTypes?.has("user-msg")) return null;
+    return <UserMessage content={msg.content} time={time} showTime={showTime} />;
+  }
   if (role === "assistant")
     return (
       <AssistantMessage
@@ -945,6 +952,7 @@ function MessageRenderer({
         blockColors={blockColors}
         autoExpand={settings.autoExpandToolCalls}
         hiddenBlockTypes={hiddenBlockTypes}
+        hideText={hiddenBlockTypes?.has("asst-text")}
       />
     );
   if (role === "toolResult") {

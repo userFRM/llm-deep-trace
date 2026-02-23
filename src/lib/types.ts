@@ -28,6 +28,8 @@ export interface BlockColors {
   msg: string;
   agent: string;
   thinking: string;
+  "user-msg": string;
+  "asst-text": string;
 }
 
 export interface AppSettings {
@@ -52,6 +54,8 @@ export const DEFAULT_BLOCK_COLORS: BlockColors = {
   msg: "#F59E0B",
   agent: "#9B72EF",
   thinking: "#71717A",
+  "user-msg": "#9B72EF",
+  "asst-text": "#E8E8F0",
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
