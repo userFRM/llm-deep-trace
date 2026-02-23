@@ -128,6 +128,36 @@ html, body {
   flex-shrink: 0;
   padding: 8px 12px;
   border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-footer-group {
+  display: flex;
+  gap: 4px;
+}
+
+.sidebar-footer-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  padding: 5px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-3);
+  font-family: var(--sans);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+
+.sidebar-footer-btn:hover {
+  border-color: var(--accent-border);
+  color: var(--text-2);
 }
 
 .sidebar-settings-btn {

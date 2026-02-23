@@ -42,6 +42,8 @@ interface AppState {
   setSearchQuery: (query: string) => void;
   toggleSourceFilter: (source: string) => void;
   toggleGroupExpanded: (sessionId: string) => void;
+  expandAllGroups: () => void;
+  collapseAllGroups: () => void;
   toggleAllThinking: () => void;
   toggleBlockExpansion: (category: BlockCategory) => void;
   setTreePanelOpen: (open: boolean) => void;
@@ -278,7 +280,24 @@ export const useStore = create<AppState>((set, get) => ({
     if (expanded.has(sessionId)) expanded.delete(sessionId);
     else expanded.add(sessionId);
     set({ expandedGroups: expanded });
-    saveExpandedGroups(expanded);
+    // Not persisted — groups always start collapsed on load
+  },
+
+  expandAllGroups: () => {
+    const parentIds = new Set<string>();
+    for (const s of get().sessions) {
+      if (s.parentSessionId) parentIds.add(s.parentSessionId);
+      if (s.hasSubagents) parentIds.add(s.sessionId);
+      if (s.key?.startsWith("agent:main:subagent:")) {
+        const main = get().sessions.find((p) => p.key === "agent:main:main");
+        if (main) parentIds.add(main.sessionId);
+      }
+    }
+    set({ expandedGroups: parentIds });
+  },
+
+  collapseAllGroups: () => {
+    set({ expandedGroups: new Set() });
   },
 
   toggleAllThinking: () => {
@@ -381,7 +400,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   initFromLocalStorage: () => {
     set({
-      expandedGroups: loadExpandedGroups(),
+      expandedGroups: new Set(), // always start collapsed
       blockColors: loadBlockColors(),
       settings: loadSettings(),
       sidebarWidth: loadSidebarWidth(),

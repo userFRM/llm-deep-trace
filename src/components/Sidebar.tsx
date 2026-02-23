@@ -220,6 +220,8 @@ export default function Sidebar() {
   const searchQuery = useStore((s) => s.searchQuery);
   const sourceFilters = useStore((s) => s.sourceFilters);
   const expandedGroups = useStore((s) => s.expandedGroups);
+  const expandAllGroups = useStore((s) => s.expandAllGroups);
+  const collapseAllGroups = useStore((s) => s.collapseAllGroups);
   const sidebarWidth = useStore((s) => s.sidebarWidth);
   const settingsOpen = useStore((s) => s.settingsOpen);
   const compactSidebar = useStore((s) => s.settings.compactSidebar);
@@ -528,8 +530,7 @@ export default function Sidebar() {
             filteredSessions.map((s) => {
               if (childIds.has(s.sessionId)) return null;
               const children = childrenOf.get(s.sessionId) || [];
-              const childIsSelected = children.some(c => c.sessionId === currentSessionId);
-              const isExpanded = expandedGroups.has(s.sessionId) || childIsSelected;
+              const isExpanded = expandedGroups.has(s.sessionId);
               const isLive = activeSessions.has(s.sessionId);
               const isArchived = archivedSessionIds.has(s.sessionId);
 
@@ -588,15 +589,39 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Settings button + resize handle */}
+      {/* Footer: expand/collapse all + settings */}
       <div className="sidebar-footer">
+        <div className="sidebar-footer-group">
+          <button
+            className="sidebar-footer-btn"
+            onClick={expandAllGroups}
+            title="Expand all subagent groups"
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M3 5l5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M3 2h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+            <span>expand all</span>
+          </button>
+          <button
+            className="sidebar-footer-btn"
+            onClick={collapseAllGroups}
+            title="Collapse all subagent groups"
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M3 11l5-5 5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M3 14h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+            <span>collapse all</span>
+          </button>
+        </div>
         <button
           className={`sidebar-settings-btn ${settingsOpen ? "active" : ""}`}
           onClick={() => setSettingsOpen(!settingsOpen)}
           title="Settings"
         >
           <GearIcon />
-          <span>Settings</span>
+          <span>settings</span>
         </button>
       </div>
 
