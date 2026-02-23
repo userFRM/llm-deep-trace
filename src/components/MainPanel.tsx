@@ -369,7 +369,7 @@ function entryToMarkdown(entry: NormalizedMessage, hiddenBlockTypes: Set<BlockCa
   return "";
 }
 
-function exportSession(messages: NormalizedMessage[], hiddenBlockTypes: Set<BlockCategory>, format: "markdown" | "json") {
+function exportSession(messages: NormalizedMessage[], hiddenBlockTypes: Set<BlockCategory>, format: "markdown" | "json" | "text") {
   if (format === "json") {
     const visible = messages.filter(e => {
       if (e.type === "compaction" || e.type === "model_change") return true;
@@ -380,7 +380,7 @@ function exportSession(messages: NormalizedMessage[], hiddenBlockTypes: Set<Bloc
     });
     return JSON.stringify(visible, null, 2);
   }
-  // markdown
+  // markdown or plain text
   const parts: string[] = [];
   for (const entry of messages) {
     if (entry.type === "compaction") { parts.push("---\n*[context compacted]*\n---\n\n"); continue; }
@@ -389,11 +389,28 @@ function exportSession(messages: NormalizedMessage[], hiddenBlockTypes: Set<Bloc
     const line = entryToMarkdown(entry, hiddenBlockTypes);
     if (line) parts.push(line);
   }
-  return parts.join("");
+  const md = parts.join("");
+  if (format === "text") {
+    // strip markdown syntax for plain text
+    return md
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/\*\*(.*?)\*\*/g, "$1")
+      .replace(/\*(.*?)\*/g, "$1")
+      .replace(/`{1,3}[^`]*`{1,3}/g, (m) => m.replace(/`/g, ""))
+      .replace(/^>\s*/gm, "  ")
+      .replace(/^---+$/gm, "──────────────────────────────")
+      .trim();
+  }
+  return md;
 }
 
-function ExportButton({ messages, hiddenBlockTypes }: { messages: NormalizedMessage[]; hiddenBlockTypes: Set<BlockCategory> }) {
+function ExportButton({ messages, hiddenBlockTypes, sess }: {
+  messages: NormalizedMessage[];
+  hiddenBlockTypes: Set<BlockCategory>;
+  sess: SessionInfo | undefined;
+}) {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -405,15 +422,27 @@ function ExportButton({ messages, hiddenBlockTypes }: { messages: NormalizedMess
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const doExport = (format: "markdown" | "json") => {
+  const doCopy = (format: "markdown" | "json" | "text") => {
     const text = exportSession(messages, hiddenBlockTypes, format);
     navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(format);
+    setTimeout(() => { setCopied(null); setOpen(false); }, 900);
+  };
+
+  const doDownload = () => {
+    const md = formatSessionMarkdown(messages, sess);
+    const filename = `session-${sess?.sessionId?.slice(-8) || "export"}-${new Date().toISOString().slice(0, 10)}.md`;
+    const blob = new Blob([md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
     setOpen(false);
   };
 
   return (
     <div className="export-btn-wrap" ref={ref}>
-      <button className="panel-icon-btn" title="Export visible session" onClick={() => setOpen(!open)}>
+      <button className="panel-icon-btn" title="Export session" onClick={() => setOpen(!open)}>
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
           <path d="M8 2v8M5 7l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
           <path d="M2 11v1.5A1.5 1.5 0 003.5 14h9a1.5 1.5 0 001.5-1.5V11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
@@ -421,13 +450,19 @@ function ExportButton({ messages, hiddenBlockTypes }: { messages: NormalizedMess
       </button>
       {open && (
         <div className="export-dropdown">
-          <button className="export-option" onClick={() => doExport("markdown")}>
+          <button className="export-option" onClick={() => doCopy("markdown")}>
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
               <path d="M2 3h12M2 7h8M2 11h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
             </svg>
-            Copy as Markdown
+            {copied === "markdown" ? "Copied!" : "Copy as Markdown"}
           </button>
-          <button className="export-option" onClick={() => doExport("json")}>
+          <button className="export-option" onClick={() => doCopy("text")}>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M3 4h10M5 8h6M4 12h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+            {copied === "text" ? "Copied!" : "Copy as plain text"}
+          </button>
+          <button className="export-option" onClick={() => doCopy("json")}>
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
               <path d="M4 2H2.5A1.5 1.5 0 001 3.5v2A1.5 1.5 0 002.5 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
               <path d="M4 14H2.5A1.5 1.5 0 011 12.5v-2A1.5 1.5 0 012.5 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
@@ -435,9 +470,17 @@ function ExportButton({ messages, hiddenBlockTypes }: { messages: NormalizedMess
               <path d="M12 14h1.5A1.5 1.5 0 0015 12.5v-2A1.5 1.5 0 0013.5 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
               <circle cx="8" cy="8" r="1.2" fill="currentColor"/>
             </svg>
-            Copy as JSON
+            {copied === "json" ? "Copied!" : "Copy as JSON"}
           </button>
-          <div className="export-note">respects current block filters</div>
+          <div className="export-divider" />
+          <button className="export-option" onClick={doDownload}>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M8 2v8M4 8l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M2 13h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+            Download as .md
+          </button>
+          <div className="export-note">copy options respect block filters</div>
         </div>
       )}
     </div>
@@ -670,50 +713,6 @@ function formatSessionMarkdown(messages: NormalizedMessage[], sess: SessionInfo 
   return lines.join("\n");
 }
 
-function ExportDropdown({ messages, sess, onClose }: { messages: NormalizedMessage[]; sess: SessionInfo | undefined; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
-  const md = useMemo(() => formatSessionMarkdown(messages, sess), [messages, sess]);
-  const title = sess ? sessionLabel(sess) : "session";
-  const filename = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60) + ".md";
-
-  const handleDownload = () => {
-    const blob = new Blob([md], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    onClose();
-  };
-
-  const handleCopy = () => {
-    copyToClipboard(md);
-    onClose();
-  };
-
-  return (
-    <div className="export-dropdown" ref={ref}>
-      <button className="export-option" onClick={handleDownload}>
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M4 8l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><path d="M2 13h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
-        Export as Markdown
-      </button>
-      <button className="export-option" onClick={handleCopy}>
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><path d="M3 11V3h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        Copy all as text
-      </button>
-    </div>
-  );
-}
-
 export default function MainPanel() {
   const currentSessionId = useStore((s) => s.currentSessionId);
   const sessions = useStore((s) => s.sessions);
@@ -755,7 +754,6 @@ export default function MainPanel() {
   const [displayCount, setDisplayCount] = useState(100);
   const loadingMoreRef = useRef(false);
   const [refPopoverOpen, setRefPopoverOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
 
   const sess = sessions.find((s) => s.sessionId === currentSessionId);
   const errors = useErrorInfo(currentMessages);
@@ -1019,38 +1017,8 @@ export default function MainPanel() {
               {refPopoverOpen && <LlmRefPopover filePath={sess.filePath} onClose={() => setRefPopoverOpen(false)} />}
             </div>
           )}
-          {/* Export button */}
-          <div style={{ position: "relative" }}>
-            <button
-              className={`toolbar-btn ${exportOpen ? "active" : ""}`}
-              onClick={() => setExportOpen(!exportOpen)}
-              title="Export session"
-            >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M4 8l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><path d="M2 13h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
-            </button>
-            {exportOpen && <ExportDropdown messages={currentMessages} sess={sess} onClose={() => setExportOpen(false)} />}
-          </div>
-          <div
-            className="live-indicator"
-            style={{ color: sseConnected ? "var(--green)" : "var(--red)" }}
-          >
-            <div
-              className="live-dot"
-              style={{ background: sseConnected ? "var(--green)" : "var(--red)" }}
-            />
-            {currentSessionId && activeSessions.has(currentSessionId)
-              ? "tailing"
-              : sseConnected ? "connected" : "offline"}
-          </div>
-        </div>
-        <div className="main-toolbar">
-          <button
-            className={`toolbar-btn ${searchVisible ? "active" : ""}`}
-            onClick={() => setSearchVisible(!searchVisible)}
-          >
-            search &#8984;F
-          </button>
-          <ExportButton messages={currentMessages} hiddenBlockTypes={hiddenBlockTypes} />
+          {/* Export */}
+          <ExportButton messages={currentMessages} hiddenBlockTypes={hiddenBlockTypes} sess={sess} />
         </div>
       </div>
 
