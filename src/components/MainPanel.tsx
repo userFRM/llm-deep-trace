@@ -162,13 +162,18 @@ function BlockToggleToolbar({
   blockExpansion,
   blockColors,
   onToggle,
+  hiddenBlockTypes,
+  onToggleHidden,
 }: {
   blockExpansion: Record<string, boolean>;
   blockColors: BlockColors;
   onToggle: (category: BlockCategory) => void;
+  hiddenBlockTypes: Set<BlockCategory>;
+  onToggleHidden: (category: BlockCategory) => void;
 }) {
   return (
     <div className="block-toggle-strip">
+      {/* expand/collapse row */}
       {BLOCK_PILLS.map(({ category, label }) => {
         const active = blockExpansion[category];
         const color = blockColors[category] || "#888899";
@@ -183,6 +188,33 @@ function BlockToggleToolbar({
             }
             onClick={() => onToggle(category)}
           >
+            {label}
+          </button>
+        );
+      })}
+      {/* visibility filter row */}
+      <span className="block-pill-sep" />
+      {BLOCK_PILLS.map(({ category, label }) => {
+        const hidden = hiddenBlockTypes.has(category);
+        const color = blockColors[category] || "#888899";
+        return (
+          <button
+            key={`vis-${category}`}
+            className={`block-pill block-pill-vis ${hidden ? "hidden" : "visible"}`}
+            style={hidden
+              ? { borderColor: color, color: "var(--text-3)", opacity: 0.4 }
+              : { borderColor: color, color }
+            }
+            title={hidden ? `Show ${label} blocks` : `Hide ${label} blocks`}
+            onClick={() => onToggleHidden(category as BlockCategory)}
+          >
+            {/* eye icon */}
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style={{ marginRight: 3 }}>
+              {hidden
+                ? <><path d="M2 2l12 12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M6.5 3.5C7 3.2 7.5 3 8 3c4 0 6 5 6 5s-.7 1.4-2 2.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none"/><path d="M4.2 4.7C2.8 6.1 2 8 2 8s2 5 6 5c1.4 0 2.6-.5 3.5-1.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none"/></>
+                : <><ellipse cx="8" cy="8" rx="6" ry="3.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="8" cy="8" r="2" fill="currentColor"/></>
+              }
+            </svg>
             {label}
           </button>
         );
@@ -479,6 +511,8 @@ export default function MainPanel() {
   const scrollTargetIndex = useStore((s) => s.scrollTargetIndex);
   const setScrollTargetIndex = useStore((s) => s.setScrollTargetIndex);
   const activeSessions = useStore((s) => s.activeSessions);
+  const hiddenBlockTypes = useStore((s) => s.hiddenBlockTypes);
+  const toggleHiddenBlockType = useStore((s) => s.toggleHiddenBlockType);
 
   const messagesRef = useRef<HTMLDivElement>(null);
   const [searchVisible, setSearchVisible] = useState(false);
@@ -788,6 +822,8 @@ export default function MainPanel() {
         blockExpansion={blockExpansion}
         blockColors={blockColors}
         onToggle={toggleBlockExpansion}
+        hiddenBlockTypes={hiddenBlockTypes}
+        onToggleHidden={toggleHiddenBlockType}
       />
 
       {/* Session stats */}
@@ -823,6 +859,7 @@ export default function MainPanel() {
                   settings={appSettings}
                   toolInputsMap={toolInputsMap}
                   onNavigateSession={handleNavigateToSession}
+                  hiddenBlockTypes={hiddenBlockTypes}
                 />
               </div>
             ))

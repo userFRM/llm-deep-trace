@@ -33,6 +33,7 @@ interface AppState {
   archivedSessionIds: Set<string>;
   sidebarTab: "browse" | "archived" | "analytics";
   activeSessions: Set<string>;
+  hiddenBlockTypes: Set<BlockCategory>;
 
   setSessions: (sessions: SessionInfo[]) => void;
   setCurrentSession: (id: string | null) => void;
@@ -60,6 +61,7 @@ interface AppState {
   unarchiveSession: (sessionId: string) => void;
   setSidebarTab: (tab: "browse" | "archived" | "analytics") => void;
   setActiveSessions: (ids: Set<string>) => void;
+  toggleHiddenBlockType: (cat: BlockCategory) => void;
   initFromLocalStorage: () => void;
   applyFilter: () => void;
 }
@@ -139,6 +141,20 @@ function loadArchivedIds(): Set<string> {
 function saveArchivedIds(ids: Set<string>) {
   try {
     localStorage.setItem("llm-deep-trace-archived", JSON.stringify([...ids]));
+  } catch { /* ignore */ }
+}
+
+function loadHiddenBlockTypes(): Set<BlockCategory> {
+  try {
+    const raw = localStorage.getItem("llm-deep-trace-hidden-blocks");
+    if (raw) return new Set(JSON.parse(raw) as BlockCategory[]);
+  } catch { /* ignore */ }
+  return new Set();
+}
+
+function saveHiddenBlockTypes(types: Set<BlockCategory>) {
+  try {
+    localStorage.setItem("llm-deep-trace-hidden-blocks", JSON.stringify([...types]));
   } catch { /* ignore */ }
 }
 
@@ -230,6 +246,7 @@ export const useStore = create<AppState>((set, get) => ({
   archivedSessionIds: new Set<string>(),
   sidebarTab: "browse",
   activeSessions: new Set<string>(),
+  hiddenBlockTypes: new Set<BlockCategory>(),
 
   setSessions: (sessions) => {
     sessions.sort((a, b) => {
@@ -402,6 +419,12 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setActiveSessions: (ids) => set({ activeSessions: ids }),
+  toggleHiddenBlockType: (cat) => {
+    const next = new Set(get().hiddenBlockTypes);
+    if (next.has(cat)) next.delete(cat); else next.add(cat);
+    set({ hiddenBlockTypes: next });
+    saveHiddenBlockTypes(next);
+  },
 
   initFromLocalStorage: () => {
     set({
@@ -411,6 +434,7 @@ export const useStore = create<AppState>((set, get) => ({
       sidebarWidth: loadSidebarWidth(),
       treePanelWidth: loadTreePanelWidth(),
       archivedSessionIds: loadArchivedIds(),
+      hiddenBlockTypes: loadHiddenBlockTypes(),
     });
   },
 
