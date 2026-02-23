@@ -1,18 +1,14 @@
 <div align="center">
-  <img src="public/logo.png" width="80" alt="llm-deep-trace" />
-  <h1>llm-deep-trace</h1>
-  <p><strong>The session browser for AI coding agents.</strong></p>
-  <p>Browse, search, and analyze every conversation your AI agents have ever had.<br/>All local. No accounts. No cloud.</p>
-  <br/>
-  <!-- replace with actual screenshot -->
-  <!-- <img src="docs/screenshot.png" width="900" alt="screenshot" /> -->
+  <img src="public/banner.png" width="900" alt="llm-deep-trace" />
+  <br/><br/>
+  <p>Browse, search, and analyze every conversation your agents have ever had.<br/>All local. No accounts. No cloud.</p>
 </div>
 
 ---
 
 ## What it is
 
-You use AI coding agents. They leave behind session logs. Those logs are gold — decisions made, code written, reasoning traced, subagents spawned. But they're just JSONL files buried in `~/.claude/` or `~/.kimi/`.
+You use coding agents. They leave behind session logs. Those logs are gold — decisions made, code written, reasoning traced, subagents spawned. But they're just JSONL files buried in `~/.claude/` or `~/.kimi/`.
 
 llm-deep-trace turns those files into a proper interface: threaded conversations, subagent trees, a conversation map, analytics, live tail, and full-text search across everything.
 
