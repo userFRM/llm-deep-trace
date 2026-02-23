@@ -160,7 +160,10 @@ function SessionItem({
   return (
     <div
       className={cls}
-      onClick={() => onSelect(session.sessionId)}
+      onClick={() => {
+        onSelect(session.sessionId);
+        if (childCount > 0) onToggleExpand(session.sessionId);
+      }}
       onContextMenu={(e) => onContextMenu(e, session)}
     >
       <div className="session-row">
