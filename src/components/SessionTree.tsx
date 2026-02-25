@@ -174,18 +174,33 @@ const nodeTypes = {
 
 // ── Layout ─────────────────────────────────────────────────────────────────
 
+// Find the root ancestor of a session
+function findRoot(sessionId: string, byId: Map<string, SessionInfo>): SessionInfo {
+  const s = byId.get(sessionId);
+  if (!s || !s.parentSessionId) return s || { sessionId } as SessionInfo;
+  const parent = byId.get(s.parentSessionId);
+  if (!parent) return s;
+  return findRoot(parent.sessionId, byId);
+}
+
+// Collect all descendants of a session (recursive)
+function collectDescendants(id: string, childrenOf: Map<string, SessionInfo[]>): SessionInfo[] {
+  const children = childrenOf.get(id) || [];
+  return children.flatMap(c => [c, ...collectDescendants(c.sessionId, childrenOf)]);
+}
+
 function buildGraph(
-  sessions: SessionInfo[],
+  allSessions: SessionInfo[],
   activeSessions: Set<string>,
   highlightId: string | null
 ): { nodes: AnyNode[], edges: Edge[] } {
-  if (!sessions.length) return { nodes: [], edges: [] };
+  if (!allSessions.length) return { nodes: [], edges: [] };
 
-  const byId   = new Map(sessions.map(s => [s.sessionId, s]));
+  const byId = new Map(allSessions.map(s => [s.sessionId, s]));
   const childrenOf = new Map<string, SessionInfo[]>();
   const roots: SessionInfo[] = [];
 
-  for (const s of sessions) {
+  for (const s of allSessions) {
     const validParent = s.parentSessionId && byId.has(s.parentSessionId);
     if (validParent) {
       const pid = s.parentSessionId!;
@@ -199,12 +214,48 @@ function buildGraph(
   roots.sort((a, b) => b.lastUpdated - a.lastUpdated);
   for (const [, ch] of childrenOf) ch.sort((a, b) => a.lastUpdated - b.lastUpdated);
 
+  // Scope: if a session is highlighted, show its root cluster + recent roots as context
+  let sessions: SessionInfo[];
+  if (highlightId) {
+    const activeRoot = findRoot(highlightId, byId);
+    const clusterIds = new Set([
+      activeRoot.sessionId,
+      ...collectDescendants(activeRoot.sessionId, childrenOf).map(s => s.sessionId),
+    ]);
+    // Also show up to 8 other recent roots (collapsed — no subagents) for context
+    const otherRoots = roots
+      .filter(r => r.sessionId !== activeRoot.sessionId)
+      .slice(0, 8);
+    const otherIds = new Set(otherRoots.map(r => r.sessionId));
+    sessions = allSessions.filter(s => clusterIds.has(s.sessionId) || otherIds.has(s.sessionId));
+  } else {
+    // No selection: show 20 most recent roots only (no subagents)
+    sessions = roots.slice(0, 20);
+  }
+
+  // Rebuild index for scoped set
+  const scopedById  = new Map(sessions.map(s => [s.sessionId, s]));
+  const scopedChildOf = new Map<string, SessionInfo[]>();
+  const scopedRoots: SessionInfo[] = [];
+
+  for (const s of sessions) {
+    const validParent = s.parentSessionId && scopedById.has(s.parentSessionId);
+    if (validParent) {
+      const pid = s.parentSessionId!;
+      if (!scopedChildOf.has(pid)) scopedChildOf.set(pid, []);
+      scopedChildOf.get(pid)!.push(s);
+    } else {
+      scopedRoots.push(s);
+    }
+  }
+  scopedRoots.sort((a, b) => b.lastUpdated - a.lastUpdated);
+  for (const [, ch] of scopedChildOf) ch.sort((a, b) => a.lastUpdated - b.lastUpdated);
+
   const nodes: AnyNode[] = [];
   const edges: Edge[] = [];
 
   // ── Height calculations ──────────────────────────────────────────────────
 
-  // Height of a team cluster (header + members)
   function teamH(members: SessionInfo[]): number {
     if (!members.length) return 0;
     return TEAM_H + V_GAP + members.reduce((sum, _, i) =>
@@ -212,9 +263,8 @@ function buildGraph(
     );
   }
 
-  // Height of everything under a root at level-1
   function rootSubtreeH(rootId: string): number {
-    const children = childrenOf.get(rootId) || [];
+    const children = scopedChildOf.get(rootId) || [];
     const direct   = children.filter(c => !c.isSidechain);
     const byTeam   = new Map<string, SessionInfo[]>();
     for (const c of children) {
@@ -224,12 +274,10 @@ function buildGraph(
       }
     }
     const teamNames = [...byTeam.keys()];
-
     const items: number[] = [
       ...direct.map(() => SUB_H),
       ...teamNames.map(tn => teamH(byTeam.get(tn)!)),
     ];
-
     if (!items.length) return ROOT_H;
     return Math.max(ROOT_H, items.reduce((sum, h, i) =>
       sum + h + (i < items.length - 1 ? V_GAP : 0), 0
@@ -240,7 +288,7 @@ function buildGraph(
 
   function placeRoot(root: SessionInfo, topY: number) {
     const color    = agentColor(root.source);
-    const children = childrenOf.get(root.sessionId) || [];
+    const children = scopedChildOf.get(root.sessionId) || [];
     const direct   = children.filter(c => !c.isSidechain);
     const byTeam   = new Map<string, SessionInfo[]>();
     for (const c of children) {
@@ -248,7 +296,6 @@ function buildGraph(
         if (!byTeam.has(c.teamName)) byTeam.set(c.teamName, []);
         byTeam.get(c.teamName)!.push(c);
       } else if (!c.isSidechain && c.teamName) {
-        // team-spawned but isSidechain flag not set — treat as direct
         direct.push(c);
       }
     }
@@ -380,7 +427,7 @@ function buildGraph(
   }
 
   let y = 0;
-  for (const root of roots) {
+  for (const root of scopedRoots) {
     placeRoot(root, y);
     y += rootSubtreeH(root.sessionId) + TREE_GAP;
   }
