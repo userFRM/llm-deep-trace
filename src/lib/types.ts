@@ -18,6 +18,9 @@ export interface SessionInfo {
   model?: string;
   cwd?: string;
   filePath?: string;
+  // Agent team metadata (Claude Code agent teams)
+  teamName?: string;
+  isSidechain?: boolean;
 }
 
 export interface BlockColors {

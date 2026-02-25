@@ -161,6 +161,75 @@ export function listKovaSessions(): SessionInfo[] {
   return sessions;
 }
 
+// ── Team resolution helpers ───────────────────────────────────────────────
+
+interface TeamWindow { teamName: string; start: number; end: number }
+
+/** Read parent JSONL and emit (teamName, timeRange) windows from top-level teamName fields */
+function buildTeamWindows(filePath: string): TeamWindow[] {
+  const windows: TeamWindow[] = [];
+  let currentTeam: string | null = null;
+  let currentStart = 0;
+  let lastTs = 0;
+  try {
+    const lines = fs.readFileSync(filePath, "utf-8").split("\n");
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const d = JSON.parse(line) as Record<string, unknown>;
+        const ts = d.timestamp ? new Date(d.timestamp as string).getTime() : 0;
+        const tn = (d.teamName as string) || null;
+        if (tn !== currentTeam) {
+          if (currentTeam) windows.push({ teamName: currentTeam, start: currentStart, end: lastTs });
+          currentTeam = tn;
+          currentStart = ts;
+        }
+        if (ts) lastTs = ts;
+      } catch { /* skip bad lines */ }
+    }
+    if (currentTeam) windows.push({ teamName: currentTeam, start: currentStart, end: lastTs });
+  } catch { /* file unreadable */ }
+  return windows.filter(w => !!w.teamName);
+}
+
+/** Find which team was active when a subagent (identified by its first-entry timestamp) was spawned */
+function resolveTeamName(agentTs: number, windows: TeamWindow[]): string | undefined {
+  if (!agentTs || !windows.length) return undefined;
+  const SLACK = 90_000; // 90s — subagents start slightly after their parent's TeamCreate
+  for (const w of windows) {
+    if (agentTs >= w.start - SLACK && agentTs <= w.end + SLACK) return w.teamName;
+  }
+  // Fallback: closest window within 5 minutes
+  let best: TeamWindow | undefined;
+  let bestDist = Infinity;
+  for (const w of windows) {
+    const dist = Math.min(Math.abs(agentTs - w.start), Math.abs(agentTs - w.end));
+    if (dist < bestDist) { bestDist = dist; best = w; }
+  }
+  return bestDist < 300_000 ? best?.teamName : undefined;
+}
+
+/** Extract a human label from a teammate-message XML payload */
+function extractTeammateLabel(entries: RawEntry[]): string | undefined {
+  for (const e of entries.slice(0, 4)) {
+    const msg = (e.message || {}) as Record<string, unknown>;
+    const content = msg.content;
+    const text = typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? (content as Array<Record<string, unknown>>).map(b => b.text || "").join(" ")
+        : "";
+    const m = (text as string).match(/<teammate-message[^>]+summary="([^"]{1,80})"/);
+    if (m) return m[1];
+    // Also try parsing from XML-like pattern without quotes
+    const m2 = (text as string).match(/<teammate-message[^>]+summary=([^>\s]{1,80})/);
+    if (m2) return m2[1].replace(/^['"]|['"]$/g, "");
+  }
+  return undefined;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function listClaudeSessions(): SessionInfo[] {
   const projectsDir = path.join(HOME, ".claude", "projects");
   const sessions: SessionInfo[] = [];
@@ -210,6 +279,17 @@ export function listClaudeSessions(): SessionInfo[] {
       sessionFileMeta.filter(m => m.isSubagent).map(m => m.parentSessionId).filter(Boolean)
     );
 
+    // Pre-build team windows for every parent that has subagents
+    const teamWindowsMap = new Map<string, TeamWindow[]>();
+    for (const meta of sessionFileMeta) {
+      if (!meta.isSubagent) {
+        const sid = path.basename(meta.filePath, ".jsonl");
+        if (uuidsWithSubagents.has(sid)) {
+          teamWindowsMap.set(sid, buildTeamWindows(meta.filePath));
+        }
+      }
+    }
+
     for (const meta of sessionFileMeta) {
       const { filePath, isSubagent, parentSessionId: parentId } = meta;
       const entries = parseJsonl(filePath);
@@ -249,17 +329,38 @@ export function listClaudeSessions(): SessionInfo[] {
       }
 
       const sessionId = path.basename(filePath, ".jsonl");
-      const sessionKey = isSubagent
-        ? sessionId
-        : projectLabel;
+      const sessionKey = isSubagent ? sessionId : projectLabel;
       const hasSubagents = !isSubagent && uuidsWithSubagents.has(sessionId);
+
+      // For subagents: resolve team, isSidechain, and a readable label
+      let teamName: string | undefined;
+      let isSidechain: boolean | undefined;
+      let subagentLabel: string | undefined;
+
+      if (isSubagent && entries.length > 0) {
+        const firstEntry = entries[0] as Record<string, unknown>;
+        isSidechain = firstEntry.isSidechain === true;
+
+        if (isSidechain && parentId) {
+          const windows = teamWindowsMap.get(parentId) || [];
+          const firstTs = firstEntry.timestamp
+            ? new Date(firstEntry.timestamp as string).getTime()
+            : 0;
+          teamName = resolveTeamName(firstTs, windows);
+        }
+
+        // Try to extract a human-readable task description
+        subagentLabel = extractTeammateLabel(entries);
+      }
+
+      const label = isSubagent
+        ? (subagentLabel || sessionId)
+        : projectLabel;
 
       sessions.push({
         sessionId,
         key: sessionKey,
-        label: isSubagent
-          ? "\u21b3 " + sessionId
-          : projectLabel,
+        label,
         lastUpdated: updatedAt,
         channel: "claude-code",
         chatType: "direct",
@@ -273,6 +374,8 @@ export function listClaudeSessions(): SessionInfo[] {
         compactionCount: 0,
         source: "claude",
         filePath,
+        teamName,
+        isSidechain,
       });
     }
   }

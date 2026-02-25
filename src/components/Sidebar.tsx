@@ -201,7 +201,12 @@ function SessionItem({
         </span>
         {isLive && <span className="live-badge-small">live</span>}
         {hasSubagents && <BotSvg />}
-        {isSubagent && <span className="subagent-badge">subagent</span>}
+        {isSubagent && session.isSidechain && (
+          <span className="subagent-badge team-badge">team</span>
+        )}
+        {isSubagent && !session.isSidechain && (
+          <span className="subagent-badge">subagent</span>
+        )}
         {!isSubagent && isPlanSession(session) && <span className="plan-badge">plan</span>}
         <button
           className={`star-btn ${isStarred ? "starred" : ""}`}
@@ -627,29 +632,81 @@ export default function Sidebar() {
                     onContextMenu={handleContextMenu}
                     onToggleStar={toggleStarred}
                   />
-                  {children.length > 0 && isExpanded && (
-                    <div className="subagent-children">
-                      {children.map((c) => (
-                        <SessionItem
-                          key={c.sessionId}
-                          session={c}
-                          isSubagent={true}
-                          childCount={0}
-                          hasSubagents={hasSubagentsSet.has(c.sessionId)}
-                          isExpanded={false}
-                          isSelected={currentSessionId === c.sessionId}
-                          isLive={activeSessions.has(c.sessionId)}
-                          isArchived={archivedSessionIds.has(c.sessionId)}
-                          isStarred={starredSessionIds.has(c.sessionId)}
-                          compact={compactSidebar}
-                          onSelect={handleSelect}
-                          onToggleExpand={toggleGroupExpanded}
-                          onContextMenu={handleContextMenu}
-                          onToggleStar={toggleStarred}
-                        />
-                      ))}
-                    </div>
-                  )}
+                  {children.length > 0 && isExpanded && (() => {
+                    // Group children by teamName
+                    const teamGroups = new Map<string, typeof children>();
+                    const ungrouped: typeof children = [];
+                    for (const c of children) {
+                      const tn = c.teamName;
+                      if (tn) {
+                        if (!teamGroups.has(tn)) teamGroups.set(tn, []);
+                        teamGroups.get(tn)!.push(c);
+                      } else {
+                        ungrouped.push(c);
+                      }
+                    }
+                    const hasTeams = teamGroups.size > 0;
+
+                    const renderChild = (c: typeof children[0]) => (
+                      <SessionItem
+                        key={c.sessionId}
+                        session={c}
+                        isSubagent={true}
+                        childCount={0}
+                        hasSubagents={hasSubagentsSet.has(c.sessionId)}
+                        isExpanded={false}
+                        isSelected={currentSessionId === c.sessionId}
+                        isLive={activeSessions.has(c.sessionId)}
+                        isArchived={archivedSessionIds.has(c.sessionId)}
+                        isStarred={starredSessionIds.has(c.sessionId)}
+                        compact={compactSidebar}
+                        onSelect={handleSelect}
+                        onToggleExpand={toggleGroupExpanded}
+                        onContextMenu={handleContextMenu}
+                        onToggleStar={toggleStarred}
+                      />
+                    );
+
+                    return (
+                      <div className={`subagent-children${hasTeams ? " has-teams" : ""}`}>
+                        {/* Team groups */}
+                        {Array.from(teamGroups.entries()).map(([teamName, members]) => (
+                          <div key={teamName} className="team-group">
+                            <div className="team-group-header">
+                              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                                <circle cx="4" cy="4" r="2" stroke="currentColor" strokeWidth="1.4"/>
+                                <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4"/>
+                                <path d="M6 4v1.5a1 1 0 001 1H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                              </svg>
+                              <span className="team-group-name">{teamName}</span>
+                              <span className="team-group-count">{members.length}</span>
+                            </div>
+                            <div className="team-group-members">
+                              {members.map(renderChild)}
+                            </div>
+                          </div>
+                        ))}
+                        {/* Ungrouped direct subagents */}
+                        {ungrouped.length > 0 && (
+                          <div className={hasTeams ? "team-group" : ""}>
+                            {hasTeams && (
+                              <div className="team-group-header">
+                                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                                  <rect x="1.5" y="1.5" width="9" height="9" rx="2" stroke="currentColor" strokeWidth="1.4"/>
+                                  <path d="M4 6h4M6 4v4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                                </svg>
+                                <span className="team-group-name">direct</span>
+                                <span className="team-group-count">{ungrouped.length}</span>
+                              </div>
+                            )}
+                            <div className={hasTeams ? "team-group-members" : ""}>
+                              {ungrouped.map(renderChild)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })
