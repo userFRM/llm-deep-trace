@@ -300,6 +300,12 @@ export function listClaudeSessions(): SessionInfo[] {
         updatedAt = 0;
       }
 
+      // Skip sessions with no real conversation (only internal snapshot/queue entries)
+      const hasRealContent = entries.some(
+        (e) => e.type === "user" || e.type === "assistant"
+      );
+      if (!hasRealContent) continue;
+
       let preview = "";
       let msgCount = 0;
       for (let i = entries.length - 1; i >= 0; i--) {
