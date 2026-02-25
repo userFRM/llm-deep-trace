@@ -2128,6 +2128,61 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   flex-shrink: 0;
 }
 
+/* ── Navigation back/forward ─────────────────────────────────────────────── */
+
+.nav-arrows {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.nav-arrow-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.nav-arrow-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-1);
+}
+
+.nav-arrow-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ── Undo button ─────────────────────────────────────────────────────────── */
+
+.undo-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(155, 114, 239, 0.1);
+  border: 1px solid rgba(155, 114, 239, 0.3);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--sans);
+  color: #9B72EF;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.undo-btn:hover {
+  background: rgba(155, 114, 239, 0.18);
+}
+
 /* ── Keyboard navigation focus ───────────────────────────────────────────── */
 
 .session-item.kb-focused {

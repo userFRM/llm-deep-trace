@@ -19,6 +19,9 @@ interface AppState {
   sessions: SessionInfo[];
   filteredSessions: SessionInfo[];
   currentSessionId: string | null;
+  navHistory: string[];
+  navIndex: number;
+  undoStack: Array<{ type: "delete"; sessions: Array<{ sessionId: string; filePath: string; session: import("./types").SessionInfo }> }>;
   currentMessages: NormalizedMessage[];
   rawEntries: RawEntry[];
   loading: boolean;
@@ -46,6 +49,9 @@ interface AppState {
 
   setSessions: (sessions: SessionInfo[]) => void;
   setCurrentSession: (id: string | null) => void;
+  navBack: () => void;
+  navForward: () => void;
+  undoLast: () => Promise<void>;
   setMessages: (entries: RawEntry[]) => void;
   setLoading: (loading: boolean) => void;
   setSseConnected: (connected: boolean) => void;
@@ -259,6 +265,9 @@ export const useStore = create<AppState>((set, get) => ({
   sessions: [],
   filteredSessions: [],
   currentSessionId: null,
+  navHistory: [],
+  navIndex: -1,
+  undoStack: [],
   currentMessages: [],
   rawEntries: [],
   loading: false,
@@ -304,7 +313,54 @@ export const useStore = create<AppState>((set, get) => ({
     get().applyFilter();
   },
 
-  setCurrentSession: (id) => set({ currentSessionId: id }),
+  setCurrentSession: (id) => {
+    if (!id) { set({ currentSessionId: null }); return; }
+    const { navHistory, navIndex } = get();
+    // Don't push duplicate consecutive entries
+    if (navHistory[navIndex] === id) { set({ currentSessionId: id }); return; }
+    const next = navHistory.slice(0, navIndex + 1);
+    next.push(id);
+    // Cap history at 100
+    if (next.length > 100) next.shift();
+    set({ currentSessionId: id, navHistory: next, navIndex: next.length - 1 });
+  },
+
+  navBack: () => {
+    const { navHistory, navIndex } = get();
+    if (navIndex <= 0) return;
+    const idx = navIndex - 1;
+    set({ currentSessionId: navHistory[idx], navIndex: idx });
+  },
+
+  navForward: () => {
+    const { navHistory, navIndex } = get();
+    if (navIndex >= navHistory.length - 1) return;
+    const idx = navIndex + 1;
+    set({ currentSessionId: navHistory[idx], navIndex: idx });
+  },
+
+  undoLast: async () => {
+    const { undoStack, sessions } = get();
+    if (!undoStack.length) return;
+    const top = undoStack[undoStack.length - 1];
+    const nextStack = undoStack.slice(0, -1);
+    if (top.type === "delete") {
+      // Restore sessions in store immediately
+      const restored = top.sessions.map(e => e.session);
+      set({ sessions: [...sessions, ...restored], undoStack: nextStack });
+      get().applyFilter();
+      // Call restore API for each file
+      await Promise.allSettled(
+        top.sessions.map(e =>
+          fetch(`/api/sessions/${e.sessionId}/restore`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filePath: e.filePath }),
+          })
+        )
+      );
+    }
+  },
 
   setMessages: (entries) => {
     entries.sort((a, b) => {
@@ -450,12 +506,21 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   deleteSessions: async (sessionIds) => {
-    const { sessions, currentSessionId } = get();
+    const { sessions, currentSessionId, undoStack } = get();
     const toDelete = new Set(sessionIds);
+    const targets = sessions.filter((s) => toDelete.has(s.sessionId));
+
+    // Push to undo stack before removing
+    const undoEntry = {
+      type: "delete" as const,
+      sessions: targets
+        .filter(s => s.filePath)
+        .map(s => ({ sessionId: s.sessionId, filePath: s.filePath!, session: s })),
+    };
 
     // Remove from store immediately
     const next = sessions.filter((s) => !toDelete.has(s.sessionId));
-    set({ sessions: next });
+    set({ sessions: next, undoStack: [...undoStack.slice(-19), undoEntry] });
 
     // If the currently-viewed session was deleted, clear the panel
     if (currentSessionId && toDelete.has(currentSessionId)) {
@@ -465,15 +530,16 @@ export const useStore = create<AppState>((set, get) => ({
     get().applyFilter();
 
     // Fire DELETE requests for each session that has a filePath
-    const targets = sessions.filter((s) => toDelete.has(s.sessionId) && s.filePath);
     await Promise.allSettled(
-      targets.map((s) =>
-        fetch(`/api/sessions/${s.sessionId}`, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filePath: s.filePath }),
-        })
-      )
+      targets
+        .filter(s => s.filePath)
+        .map((s) =>
+          fetch(`/api/sessions/${s.sessionId}`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filePath: s.filePath }),
+          })
+        )
     );
   },
 

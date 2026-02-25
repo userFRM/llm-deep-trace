@@ -724,6 +724,12 @@ export default function MainPanel() {
   const blockExpansion = useStore((s) => s.blockExpansion);
   const toggleBlockExpansion = useStore((s) => s.toggleBlockExpansion);
   const setCurrentSession = useStore((s) => s.setCurrentSession);
+  const navBack    = useStore((s) => s.navBack);
+  const navForward = useStore((s) => s.navForward);
+  const navHistory = useStore((s) => s.navHistory);
+  const navIndex   = useStore((s) => s.navIndex);
+  const undoLast   = useStore((s) => s.undoLast);
+  const undoStack  = useStore((s) => s.undoStack);
   const setMessages = useStore((s) => s.setMessages);
   const setLoading = useStore((s) => s.setLoading);
   const blockColors = useStore((s) => s.blockColors);
@@ -886,10 +892,16 @@ export default function MainPanel() {
       if (e.key === "Escape" && searchVisible) {
         setSearchVisible(false);
       }
+      // Navigation: Cmd+[ = back, Cmd+] = forward
+      if (mod && e.key === "[") { e.preventDefault(); navBack(); }
+      if (mod && e.key === "]") { e.preventDefault(); navForward(); }
+      // Undo: Cmd+Z (no shift) = undo last action
+      if (mod && !e.shiftKey && e.key === "z") { e.preventDefault(); undoLast(); }
     };
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [currentSessionId, searchVisible]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId, searchVisible, navBack, navForward, undoLast]);
 
   // Arrow key navigation
   useEffect(() => {
@@ -966,6 +978,29 @@ export default function MainPanel() {
       {/* Header */}
       <div className="main-header">
         <div className="main-header-top">
+          {/* Back / Forward navigation */}
+          <div className="nav-arrows">
+            <button
+              className="nav-arrow-btn"
+              onClick={navBack}
+              disabled={navIndex <= 0}
+              title="Back (⌘[)"
+            >
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                <path d="M9 2L4 7l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            <button
+              className="nav-arrow-btn"
+              onClick={navForward}
+              disabled={navIndex >= navHistory.length - 1}
+              title="Forward (⌘])"
+            >
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                <path d="M5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
           <span className="main-session-label">{label}</span>
           <span
             className="main-session-id"
@@ -989,6 +1024,20 @@ export default function MainPanel() {
             </span>
           ) : null}
           <span className="main-spacer" />
+          {/* Undo indicator */}
+          {undoStack.length > 0 && (
+            <button
+              className="undo-btn"
+              onClick={() => undoLast()}
+              title={`Undo last delete (⌘Z) — ${undoStack[undoStack.length - 1]?.sessions?.length ?? 1} session(s)`}
+            >
+              <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
+                <path d="M2 5h7a4 4 0 010 8H5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M2 5l3-3M2 5l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              undo
+            </button>
+          )}
           {/* Jump to error badge */}
           {errors.length > 0 && (
             <button
