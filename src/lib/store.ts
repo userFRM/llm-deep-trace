@@ -21,6 +21,7 @@ interface AppState {
   currentSessionId: string | null;
   navHistory: string[];
   navIndex: number;
+  deletedSessionIds: Set<string>;  // tombstone — SSE can't resurrect deleted sessions
   undoStack: Array<{ type: "delete"; sessions: Array<{ sessionId: string; filePath: string; session: import("./types").SessionInfo }> }>;
   currentMessages: NormalizedMessage[];
   rawEntries: RawEntry[];
@@ -267,6 +268,7 @@ export const useStore = create<AppState>((set, get) => ({
   currentSessionId: null,
   navHistory: [],
   navIndex: -1,
+  deletedSessionIds: new Set<string>(),
   undoStack: [],
   currentMessages: [],
   rawEntries: [],
@@ -294,7 +296,13 @@ export const useStore = create<AppState>((set, get) => ({
   pinnedBlocks: {},
 
   setSessions: (sessions) => {
-    sessions.sort((a, b) => {
+    // Filter out tombstoned sessions — SSE must not resurrect deleted sessions
+    const { deletedSessionIds } = get();
+    const live = deletedSessionIds.size > 0
+      ? sessions.filter(s => !deletedSessionIds.has(s.sessionId))
+      : sessions;
+
+    live.sort((a, b) => {
       if (a.isActive && !a.isDeleted && !(b.isActive && !b.isDeleted)) return -1;
       if (b.isActive && !b.isDeleted && !(a.isActive && !a.isDeleted)) return 1;
       return (b.lastUpdated || 0) - (a.lastUpdated || 0);
@@ -303,13 +311,13 @@ export const useStore = create<AppState>((set, get) => ({
     // Detect active sessions (modified in last 60s)
     const now = Date.now();
     const active = new Set<string>();
-    for (const s of sessions) {
+    for (const s of live) {
       if (s.lastUpdated && now - s.lastUpdated < 60000) {
         active.add(s.sessionId);
       }
     }
 
-    set({ sessions, activeSessions: active });
+    set({ sessions: live, activeSessions: active });
     get().applyFilter();
   },
 
@@ -340,14 +348,18 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   undoLast: async () => {
-    const { undoStack, sessions } = get();
+    const { undoStack, sessions, deletedSessionIds } = get();
     if (!undoStack.length) return;
     const top = undoStack[undoStack.length - 1];
     const nextStack = undoStack.slice(0, -1);
     if (top.type === "delete") {
+      // Remove from tombstone so SSE can resurface them after restore
+      const newTombstone = new Set(deletedSessionIds);
+      for (const e of top.sessions) newTombstone.delete(e.sessionId);
+
       // Restore sessions in store immediately
       const restored = top.sessions.map(e => e.session);
-      set({ sessions: [...sessions, ...restored], undoStack: nextStack });
+      set({ sessions: [...sessions, ...restored], deletedSessionIds: newTombstone, undoStack: nextStack });
       get().applyFilter();
       // Call restore API for each file
       await Promise.allSettled(
@@ -506,7 +518,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   deleteSessions: async (sessionIds) => {
-    const { sessions, currentSessionId, undoStack } = get();
+    const { sessions, currentSessionId, undoStack, deletedSessionIds } = get();
     const toDelete = new Set(sessionIds);
     const targets = sessions.filter((s) => toDelete.has(s.sessionId));
 
@@ -518,9 +530,13 @@ export const useStore = create<AppState>((set, get) => ({
         .map(s => ({ sessionId: s.sessionId, filePath: s.filePath!, session: s })),
     };
 
+    // Add to tombstone FIRST so any in-flight SSE update can't resurrect them
+    const newTombstone = new Set(deletedSessionIds);
+    for (const id of sessionIds) newTombstone.add(id);
+
     // Remove from store immediately
     const next = sessions.filter((s) => !toDelete.has(s.sessionId));
-    set({ sessions: next, undoStack: [...undoStack.slice(-19), undoEntry] });
+    set({ sessions: next, deletedSessionIds: newTombstone, undoStack: [...undoStack.slice(-19), undoEntry] });
 
     // If the currently-viewed session was deleted, clear the panel
     if (currentSessionId && toDelete.has(currentSessionId)) {
