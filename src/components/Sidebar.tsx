@@ -52,6 +52,17 @@ const BotSvg = () => (
 
 const PLAN_KEYWORDS = /\b(plan|step\s*\d|task\s*list|implement|phase\s*\d|milestone|roadmap|execute)\b/i;
 
+function sessionDuration(startedAt?: number, lastUpdated?: number): string {
+  if (!startedAt || !lastUpdated || lastUpdated <= startedAt) return "";
+  const ms = lastUpdated - startedAt;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "<1m";
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 function isPlanSession(session: SessionInfo): boolean {
   const text = `${session.label || ""} ${session.preview || ""}`;
   return PLAN_KEYWORDS.test(text);
@@ -131,6 +142,7 @@ function SessionItem({
   isSelected,
   isChecked,
   anyChecked,
+  isKeyboardFocused,
   isLive,
   isArchived,
   isStarred,
@@ -149,6 +161,7 @@ function SessionItem({
   isSelected: boolean;
   isChecked: boolean;
   anyChecked: boolean;
+  isKeyboardFocused: boolean;
   isLive: boolean;
   isArchived: boolean;
   isStarred: boolean;
@@ -170,9 +183,12 @@ function SessionItem({
     : "inactive";
   const preview = cleanPreview(session.preview || "");
 
+  const duration = sessionDuration(session.startedAt, session.lastUpdated);
+
   let cls = "session-item";
   if (isSelected) cls += " selected";
   if (isChecked) cls += " si-checked";
+  if (isKeyboardFocused) cls += " kb-focused";
   if (isSubagent) cls += " subagent";
   if (compact) cls += " compact";
   if (isArchived) cls += " archived";
@@ -257,17 +273,23 @@ function SessionItem({
           <span className="session-source" style={{ color: sourceColors[src] || "var(--text-2)" }}>
             {src}
           </span>
-          <span className="session-msgs">
-            {session.messageCount || 0} msgs
-          </span>
+          {duration && (
+            <span className="session-duration" title="Session duration">
+              <svg width="9" height="9" viewBox="0 0 12 12" fill="none" style={{ verticalAlign: "middle" }}>
+                <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2"/>
+                <path d="M6 3v3l2 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+              {" "}{duration}
+            </span>
+          )}
           {session.compactionCount > 0 && (
-            <span className="session-msgs">
-              &middot; {session.compactionCount}&times;
+            <span className="session-msgs" title={`${session.compactionCount} compactions`}>
+              {session.compactionCount}&times; compacted
             </span>
           )}
           {childCount > 0 && (
             <span className="subagent-count-badge">
-              ({childCount} subagent{childCount !== 1 ? "s" : ""})
+              {childCount} subagent{childCount !== 1 ? "s" : ""}
             </span>
           )}
         </div>
@@ -321,6 +343,9 @@ export default function Sidebar() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const lastCheckedRef = useRef<string | null>(null);
   const deleteSessions = useStore((s) => s.deleteSessions);
+  // Keyboard navigation
+  const [kbFocusIdx, setKbFocusIdx] = useState(-1);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const toggleTeam = useCallback((parentId: string, teamName: string) => {
     const key = `${parentId}::${teamName}`;
@@ -481,7 +506,7 @@ export default function Sidebar() {
     [selectedIds, deleteSessions]
   );
 
-  // Keyboard shortcut
+  // Keyboard navigation + shortcuts
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -489,11 +514,55 @@ export default function Sidebar() {
         e.preventDefault();
         searchRef.current?.focus();
         searchRef.current?.select();
+        return;
+      }
+      // Don't hijack arrow keys when typing in search
+      if (document.activeElement === searchRef.current) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setKbFocusIdx(prev => {
+          const next = Math.min(prev + 1, filteredSessions.length - 1);
+          scrollListToIdx(next);
+          return next;
+        });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setKbFocusIdx(prev => {
+          const next = Math.max(prev - 1, 0);
+          scrollListToIdx(next);
+          return next;
+        });
+      } else if (e.key === "Enter") {
+        setKbFocusIdx(prev => {
+          const s = filteredSessions[prev];
+          if (s) handleSelect(s.sessionId);
+          return prev;
+        });
+      } else if (e.key === "Escape") {
+        setKbFocusIdx(-1);
       }
     };
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredSessions]);
+
+  // Scroll list to keep keyboard-focused item visible
+  const scrollListToIdx = useCallback((idx: number) => {
+    const list = listRef.current;
+    if (!list) return;
+    const items = list.querySelectorAll<HTMLElement>(".session-item:not(.subagent)");
+    const el = items[idx];
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, []);
+
+  // Auto-scroll list to keep the active session visible when it changes
+  useEffect(() => {
+    if (!currentSessionId) return;
+    const idx = filteredSessions.findIndex(s => s.sessionId === currentSessionId);
+    if (idx >= 0) scrollListToIdx(idx);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId]);
 
   // Drag-to-resize sidebar
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -680,7 +749,7 @@ export default function Sidebar() {
           )}
         </div>
       ) : (
-        <div className="session-list scroller">
+        <div className="session-list scroller" ref={listRef}>
           {filteredSessions.length === 0 ? (
             <div className="session-list-empty">
               {searchQuery ? "No matches" : sidebarTab === "archived" ? "No archived sessions" : sidebarTab === "favourites" ? "No favourite sessions" : sidebarTab === "pinned" ? "No sessions with pinned blocks" : "No sessions"}
@@ -707,6 +776,7 @@ export default function Sidebar() {
                     isSelected={currentSessionId === s.sessionId}
                     isChecked={selectedIds.has(s.sessionId)}
                     anyChecked={selectedIds.size > 0}
+                    isKeyboardFocused={filteredSessions.indexOf(s) === kbFocusIdx}
                     isLive={isLive}
                     isArchived={isArchived}
                     isStarred={starredSessionIds.has(s.sessionId)}
@@ -743,6 +813,7 @@ export default function Sidebar() {
                         isSelected={currentSessionId === c.sessionId}
                         isChecked={selectedIds.has(c.sessionId)}
                         anyChecked={selectedIds.size > 0}
+                        isKeyboardFocused={false}
                         isLive={activeSessions.has(c.sessionId)}
                         isArchived={archivedSessionIds.has(c.sessionId)}
                         isStarred={starredSessionIds.has(c.sessionId)}

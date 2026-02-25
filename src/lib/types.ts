@@ -4,6 +4,7 @@ export interface SessionInfo {
   label?: string;
   title?: string;
   lastUpdated: number;
+  startedAt?: number;   // timestamp of first message (ms)
   channel: string;
   chatType: string;
   messageCount: number;

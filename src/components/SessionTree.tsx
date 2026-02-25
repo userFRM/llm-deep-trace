@@ -13,6 +13,7 @@ import {
   Background,
   BackgroundVariant,
   MarkerType,
+  MiniMap,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { NormalizedMessage, SessionInfo } from "@/lib/types";
@@ -456,6 +457,22 @@ function InnerFlow({
       className="session-graph-flow"
     >
       <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1a1a24" />
+      <MiniMap
+        nodeColor={(node) => {
+          const d = node.data as { kind: string; accentColor?: string };
+          if (d.kind === "team") return "#F59E0B44";
+          return d.accentColor || "#9B72EF";
+        }}
+        nodeStrokeWidth={0}
+        style={{
+          background: "#0D0D0F",
+          border: "1px solid #1E1E24",
+          borderRadius: "6px",
+        }}
+        maskColor="rgba(0,0,0,0.55)"
+        zoomable
+        pannable
+      />
     </ReactFlow>
   );
 }

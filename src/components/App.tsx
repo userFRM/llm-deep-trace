@@ -117,14 +117,7 @@ export default function App() {
     };
   }, [currentSessionId, activeSessions, sessions, setMessages]);
 
-  // The map is a global graph — always available, user-controlled visibility.
-  // Auto-open on first session load if not manually closed.
-  useEffect(() => {
-    if (currentSessionId && !treePanelManualClose) {
-      setTreePanelOpen(true);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // The map is a global graph — always available, user-controlled (close with X, reopen with tray handle)
 
   const handleScrollToMessage = useCallback(
     (messageIndex: number) => {

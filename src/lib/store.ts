@@ -268,7 +268,7 @@ export const useStore = create<AppState>((set, get) => ({
   expandedGroups: new Set<string>(),
   allThinkingExpanded: false,
   blockExpansion: { thinking: false, exec: false, file: false, web: false, browser: false, msg: false, agent: false, "user-msg": false, "asst-text": false },
-  treePanelOpen: false,
+  treePanelOpen: true,
   treePanelManualClose: false,
   theme: "system",
   sidebarWidth: 280,

@@ -1047,6 +1047,27 @@ export default function MainPanel() {
           {/* Export */}
           <ExportButton messages={currentMessages} hiddenBlockTypes={hiddenBlockTypes} sess={sess} />
         </div>
+        {/* Parent breadcrumb — shown when viewing a subagent */}
+        {sess?.parentSessionId && (() => {
+          const parent = sessions.find(s =>
+            s.sessionId === sess.parentSessionId || s.key === sess.parentSessionId
+          );
+          return parent ? (
+            <div className="parent-crumb">
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                <path d="M8 2L4 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <button
+                className="parent-crumb-btn"
+                onClick={() => setCurrentSession(parent.key || parent.sessionId)}
+                title="Go to parent session"
+              >
+                {sessionLabel(parent)}
+              </button>
+              <span className="parent-crumb-label">parent</span>
+            </div>
+          ) : null;
+        })()}
       </div>
 
       {/* Block toggle toolbar */}

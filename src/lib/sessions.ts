@@ -343,6 +343,15 @@ export function listClaudeSessions(): SessionInfo[] {
         if (c) { sessionCwd = c; break; }
       }
 
+      // Extract startedAt — timestamp of first real user/assistant message
+      let startedAt: number | undefined;
+      for (const e of entries) {
+        if (e.type === "user" || e.type === "assistant") {
+          const ts = (e as Record<string, unknown>).timestamp as string | undefined;
+          if (ts) { startedAt = new Date(ts).getTime(); break; }
+        }
+      }
+
       let rawPreview = "";
       let msgCount = 0;
       for (let i = entries.length - 1; i >= 0; i--) {
@@ -414,6 +423,7 @@ export function listClaudeSessions(): SessionInfo[] {
         key: sessionKey,
         label,
         lastUpdated: updatedAt,
+        startedAt,
         channel: "claude-code",
         chatType: "direct",
         messageCount: msgCount,
