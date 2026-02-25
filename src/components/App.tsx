@@ -113,7 +113,11 @@ export default function App() {
   }, [currentSessionId, activeSessions, sessions, setMessages]);
 
   // Auto-show/hide tree panel based on subagents.
-  // Uses sessionsRef (not sessions) so SSE-triggered sessions array updates
+  // Rules:
+  //   • Session has subagents → open tree (unless manually closed)
+  //   • Session IS a subagent (has parentSessionId) → leave tree as-is
+  //   • Top-level session with no subagents → close tree
+  // Uses sessionsRef (not sessions) so SSE-triggered array updates
   // don't re-run this effect and undo the treeNavRef guard.
   useEffect(() => {
     if (!currentSessionId) return;
@@ -125,10 +129,12 @@ export default function App() {
     if (!sess) return;
 
     if (sess.hasSubagents) {
-      if (!treePanelManualClose) {
-        setTreePanelOpen(true);
-      }
+      // Parent session — open the tree
+      if (!treePanelManualClose) setTreePanelOpen(true);
+    } else if (sess.parentSessionId) {
+      // Subagent session — keep tree exactly as it is, don't touch it
     } else {
+      // Plain top-level session with no agent tree — close
       setTreePanelOpen(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
