@@ -52,6 +52,10 @@ export function normalizeClaudeEntry(
       }
     }
 
+    const teamMeta: Partial<NormalizedMessage> = {};
+    if (e.teamName) teamMeta.teamName = e.teamName as string;
+    if (e.isSidechain) teamMeta.isSidechain = e.isSidechain as boolean;
+
     if (toolResults.length > 0) {
       const out: NormalizedMessage[] = [];
       if (nc.length)
@@ -59,8 +63,9 @@ export function normalizeClaudeEntry(
           type: "message",
           timestamp: e.timestamp,
           message: { role, content: nc as unknown as string },
+          ...teamMeta,
         });
-      out.push(...toolResults);
+      out.push(...toolResults.map(r => ({ ...r, ...teamMeta })));
       return out.length === 1 ? out[0] : out;
     }
     return {
@@ -70,6 +75,7 @@ export function normalizeClaudeEntry(
         role,
         content: nc.length ? (nc as unknown as string) : (content as string),
       },
+      ...teamMeta,
     };
   }
   return null;

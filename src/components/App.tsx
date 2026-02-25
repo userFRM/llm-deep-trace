@@ -8,6 +8,7 @@ import Sidebar from "./Sidebar";
 import MainPanel from "./MainPanel";
 import AnalyticsDashboard from "./AnalyticsDashboard";
 import SetupView from "./SetupView";
+import ToastContainer from "./Toast";
 
 const SessionTree = lazy(() => import("./SessionTree"));
 
@@ -240,6 +241,7 @@ export default function App() {
           </Suspense>
         </div>
       )}
+      <ToastContainer />
     </div>
   );
 }

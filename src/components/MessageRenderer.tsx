@@ -1007,17 +1007,32 @@ function MessageRenderer({
   const time = fmtTime(entry.timestamp);
   const showTime = settings.showTimestamps;
 
+  // Team/sidechain wrapper — shows agent team badge above the message
+  const wrap = (el: React.ReactElement) => {
+    if (!entry.teamName && !entry.isSidechain) return el;
+    return (
+      <div className="msg-team-wrapper">
+        <div className="team-badge-row">
+          <span className="team-dot" />
+          {entry.teamName && <span className="team-name">{entry.teamName}</span>}
+          {entry.isSidechain && <span className="team-sidechain-pill">sidechain</span>}
+        </div>
+        {el}
+      </div>
+    );
+  };
+
   if (role === "user") {
     if (hiddenBlockTypes?.has("user-msg")) return null;
     const blockId = `user-${msgIndex ?? 0}`;
-    return <UserMessage
+    return wrap(<UserMessage
       content={msg.content} time={time} showTime={showTime}
       isPinned={pinnedBlockIds?.has(blockId)}
       onPin={onPinBlock ? () => onPinBlock(blockId, "user-msg", String(msg.content).slice(0, 80)) : undefined}
-    />;
+    />);
   }
   if (role === "assistant")
-    return (
+    return wrap(
       <AssistantMessage
         content={msg.content}
         time={time}

@@ -333,18 +333,20 @@ export function toolColorKey(name: string): string {
 }
 
 export function copyToClipboard(text: string, label?: string): Promise<void> {
-  return navigator.clipboard.writeText(text).catch(() => {
+  const fire = () => {
+    if (label && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("ldt:toast", { detail: label }));
+    }
+  };
+  return navigator.clipboard.writeText(text).then(fire).catch(() => {
     const ta = document.createElement("textarea");
     ta.value = text;
     ta.style.cssText = "position:fixed;opacity:0;top:0;left:0;";
     document.body.appendChild(ta);
     ta.select();
-    try {
-      document.execCommand("copy");
-    } catch {
-      // ignore
-    }
+    try { document.execCommand("copy"); } catch { /* ignore */ }
     document.body.removeChild(ta);
+    fire();
   });
 }
 

@@ -82,6 +82,9 @@ export interface NormalizedMessage {
   thinkingLevel?: string;
   customType?: string;
   data?: Record<string, unknown>;
+  // Agent team metadata
+  teamName?: string;
+  isSidechain?: boolean;
 }
 
 export interface ContentBlock {
