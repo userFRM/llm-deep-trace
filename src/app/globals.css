@@ -3676,3 +3676,64 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   color: #9B72EF;
   border: 1px solid rgba(155, 114, 239, 0.25);
 }
+
+/* ── Teammate message card ──────────────────────────────────────────────────── */
+.teammate-card {
+  border: 1px solid color-mix(in srgb, var(--team-color) 30%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--team-color) 5%, var(--surface, #111114));
+  margin: 4px 0;
+  overflow: hidden;
+}
+.teammate-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--team-color) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--team-color) 20%, transparent);
+  user-select: none;
+}
+.teammate-card-header:hover { background: color-mix(in srgb, var(--team-color) 15%, transparent); }
+.teammate-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--team-color);
+  flex-shrink: 0;
+}
+.teammate-id {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--team-color);
+  flex-shrink: 0;
+}
+.teammate-summary {
+  font-size: 11px;
+  color: var(--text-2, #9090a8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.teammate-chevron {
+  font-size: 11px;
+  color: var(--team-color);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.teammate-card-body {
+  padding: 10px 14px;
+}
+.teammate-json {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-2, #9090a8);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+.teammate-md { font-size: 12px; }
+.teammate-md table { font-size: 11px; }

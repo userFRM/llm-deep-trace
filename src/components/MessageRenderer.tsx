@@ -674,6 +674,85 @@ function ToolResultBlock({
 }
 
 // ── User Message ──
+// ── Teammate message parser + card ──────────────────────────────────────────
+const TEAM_COLORS: Record<string, string> = {
+  blue: "#3B82F6", yellow: "#F59E0B", green: "#22C55E",
+  red: "#EF4444", purple: "#9B72EF", orange: "#F97316",
+  cyan: "#06B6D4", pink: "#EC4899", white: "#E2E8F0",
+};
+
+interface ParsedTeammateMsg {
+  teammateId: string;
+  color: string;
+  hex: string;
+  summary?: string;
+  content: string;
+  isJson: boolean;
+}
+
+function parseTeammateMsgs(text: string): ParsedTeammateMsg[] {
+  const re = /<teammate-message\b([^>]*)>([\s\S]*?)<\/teammate-message>/g;
+  const results: ParsedTeammateMsg[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const attrs = m[1];
+    const raw = m[2].trim();
+    const idM = attrs.match(/teammate_id="([^"]*)"/);
+    const colorM = attrs.match(/color="([^"]*)"/);
+    const summaryM = attrs.match(/summary="([^"]*)"/);
+    const color = colorM?.[1] || "blue";
+    // Strip nested teammate-message tags from content if present
+    const content = raw.replace(/<\/?teammate-message\b[^>]*>/g, "").trim();
+    const isJson = /^\{/.test(content) || /^\[/.test(content);
+    results.push({
+      teammateId: idM?.[1] || "agent",
+      color,
+      hex: TEAM_COLORS[color] ?? "#3B82F6",
+      summary: summaryM?.[1],
+      content,
+      isJson,
+    });
+  }
+  return results;
+}
+
+function tryFormatJson(text: string): string | null {
+  try {
+    const parsed = JSON.parse(text);
+    return JSON.stringify(parsed, null, 2);
+  } catch { return null; }
+}
+
+function TeammateMessageCard({ msg }: { msg: ParsedTeammateMsg }) {
+  const [expanded, setExpanded] = useState(true);
+  const formatted = msg.isJson ? tryFormatJson(msg.content) : null;
+
+  return (
+    <div className="teammate-card" style={{ "--team-color": msg.hex } as React.CSSProperties}>
+      <div className="teammate-card-header" onClick={() => setExpanded(e => !e)}>
+        <span className="teammate-dot" />
+        <span className="teammate-id">{msg.teammateId}</span>
+        {msg.summary && <span className="teammate-summary">{msg.summary}</span>}
+        <span className="teammate-chevron">{expanded ? "▾" : "▸"}</span>
+      </div>
+      {expanded && (
+        <div className="teammate-card-body">
+          {formatted ? (
+            <pre className="teammate-json">{formatted}</pre>
+          ) : (
+            <div className="md-content teammate-md"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function hasTeammateMsg(text: string): boolean {
+  return /<teammate-message\b/.test(text);
+}
+
 function UserMessage({ content, time, showTime, isPinned, onPin }: { content: unknown; time: string; showTime: boolean; isPinned?: boolean; onPin?: () => void }) {
   let text = extractText(content);
   text = stripConversationMeta(text);
@@ -689,6 +768,26 @@ function UserMessage({ content, time, showTime, isPinned, onPin }: { content: un
   }
 
   if (!text && imageBlocks.length === 0) return null;
+
+  // ── Teammate message detection ──
+  if (text && hasTeammateMsg(text)) {
+    const cards = parseTeammateMsgs(text);
+    if (cards.length > 0) {
+      // Extract any text outside the teammate-message tags
+      const outside = text.replace(/<teammate-message\b[\s\S]*?<\/teammate-message>/g, "").trim();
+      return (
+        <div className="msg">
+          {outside && (
+            <div className="msg-user copyable" style={{ marginBottom: 6 }}>
+              <div className="msg-user-text">{outside}</div>
+            </div>
+          )}
+          {cards.map((card, i) => <TeammateMessageCard key={i} msg={card} />)}
+          {showTime && <div className="msg-time">{time}</div>}
+        </div>
+      );
+    }
+  }
 
   return (
     <div className="msg">
