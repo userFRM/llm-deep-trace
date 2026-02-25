@@ -161,6 +161,36 @@ export function listKovaSessions(): SessionInfo[] {
   return sessions;
 }
 
+// ── Preview cleaning ──────────────────────────────────────────────────────
+
+/** Strip internal XML payloads and noise from Claude session previews */
+function cleanSessionPreview(raw: string): string {
+  if (!raw) return "";
+
+  // Looks like a raw session/tool ID (hex string) — skip entirely
+  if (/^[0-9a-f]{8,}\s/.test(raw.trim()) || /^[0-9a-f]{32,}$/.test(raw.trim())) return "";
+
+  // Extract task description from teammate-message
+  const tm = raw.match(/<teammate-message[^>]+summary="([^"]{1,120})"/);
+  if (tm) return tm[1];
+
+  // Extract from task-notification body
+  const tn = raw.match(/<task-notification[^>]*>\s*([\s\S]*?)\s*<\/task-notification>/);
+  if (tn) {
+    const inner = tn[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (inner.length > 6) return inner.slice(0, 120);
+  }
+
+  // Starts with XML — strip tags and use remainder
+  if (raw.trimStart().startsWith("<")) {
+    const stripped = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (stripped.length > 6) return stripped.slice(0, 120);
+    return "";
+  }
+
+  return raw.replace(/\n/g, " ").trim().slice(0, 120);
+}
+
 // ── Team resolution helpers ───────────────────────────────────────────────
 
 interface TeamWindow { teamName: string; start: number; end: number }
@@ -306,15 +336,22 @@ export function listClaudeSessions(): SessionInfo[] {
       );
       if (!hasRealContent) continue;
 
-      let preview = "";
+      // Extract cwd from the first entry that has it (gives us the actual repo path)
+      let sessionCwd: string | undefined;
+      for (const e of entries.slice(0, 10)) {
+        const c = (e as Record<string, unknown>).cwd as string | undefined;
+        if (c) { sessionCwd = c; break; }
+      }
+
+      let rawPreview = "";
       let msgCount = 0;
       for (let i = entries.length - 1; i >= 0; i--) {
         const e = entries[i];
-        if (e.type === "user" && !preview) {
+        if (e.type === "user" && !rawPreview) {
           const msg = (e.message || {}) as Record<string, unknown>;
           const content = msg.content;
           if (typeof content === "string") {
-            preview = content.slice(0, 120);
+            rawPreview = content.slice(0, 300);
           } else if (Array.isArray(content)) {
             for (const block of content) {
               if (
@@ -323,9 +360,9 @@ export function listClaudeSessions(): SessionInfo[] {
                 ((block as Record<string, unknown>).type === "input_text" ||
                   (block as Record<string, unknown>).type === "text")
               ) {
-                preview = (
+                rawPreview = (
                   ((block as Record<string, unknown>).text as string) || ""
-                ).slice(0, 120);
+                ).slice(0, 300);
                 break;
               }
             }
@@ -333,6 +370,9 @@ export function listClaudeSessions(): SessionInfo[] {
         }
         if (e.type === "user" || e.type === "assistant") msgCount++;
       }
+
+      // Clean XML/internal noise from preview
+      const preview = cleanSessionPreview(rawPreview);
 
       const sessionId = path.basename(filePath, ".jsonl");
       const sessionKey = isSubagent ? sessionId : projectLabel;
@@ -359,9 +399,15 @@ export function listClaudeSessions(): SessionInfo[] {
         subagentLabel = extractTeammateLabel(entries);
       }
 
+      // Build the display label:
+      // - Subagents: task summary or session ID
+      // - Parents: clean first user message; fall back to cwd basename or project folder
+      const cwdBasename = sessionCwd
+        ? sessionCwd.split("/").filter(Boolean).pop() || ""
+        : "";
       const label = isSubagent
         ? (subagentLabel || sessionId)
-        : projectLabel;
+        : (preview || cwdBasename || projectLabel.split("/").pop() || sessionId.slice(0, 14));
 
       sessions.push({
         sessionId,
@@ -380,6 +426,7 @@ export function listClaudeSessions(): SessionInfo[] {
         compactionCount: 0,
         source: "claude",
         filePath,
+        cwd: sessionCwd,
         teamName,
         isSidechain,
       });

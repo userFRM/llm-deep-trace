@@ -275,25 +275,21 @@ export function sessionLabel(s: {
     return s.sessionId.slice(0, 14) + "\u2026";
   }
 
-  // Claude Code sessions
+  // Claude Code sessions — label is already the clean first user message from the scanner
   if (src === "claude") {
     if (s.isSubagent) {
+      // Subagent label is already set to task summary or session ID in the scanner
+      if (s.label && s.label !== s.sessionId) return s.label;
       return "subagent " + s.sessionId.slice(0, 8);
     }
-    const slug = s.label || s.key || "";
-    let project = slug;
-    if (slug.startsWith("~/")) {
-      const parts = slug.split("/");
-      project = parts[parts.length - 1] || parts[parts.length - 2] || slug;
-    } else if (slug.startsWith("-") || slug.includes("-")) {
-      const parts = slug.replace(/^-/, "").split(/[-/]/);
-      project = parts[parts.length - 1] || slug;
+    // For parent sessions, label = clean first user message
+    if (s.label && s.label.length > 2) return s.label;
+    // Fallback: cwd basename
+    if (s.cwd) {
+      const base = s.cwd.split("/").filter(Boolean).pop() || "";
+      if (base) return base;
     }
-    if (s.preview && project) {
-      const snippet = s.preview.slice(0, 40).replace(/\n/g, " ");
-      return `${project}: ${snippet}`;
-    }
-    return project || s.sessionId.slice(0, 14) + "\u2026";
+    return s.sessionId.slice(0, 14) + "\u2026";
   }
 
   // Codex sessions
