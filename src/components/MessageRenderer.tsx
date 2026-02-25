@@ -691,7 +691,8 @@ interface ParsedTeammateMsg {
 }
 
 function parseTeammateMsgs(text: string): ParsedTeammateMsg[] {
-  const re = /<teammate-message\b([^>]*)>([\s\S]*?)<\/teammate-message>/g;
+  // Match both properly closed tags AND unclosed ones (content runs to end of string)
+  const re = /<teammate-message\b([^>]*)>([\s\S]*?)(?:<\/teammate-message>|(?=<teammate-message\b)|$)/g;
   const results: ParsedTeammateMsg[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
@@ -773,13 +774,15 @@ function UserMessage({ content, time, showTime, isPinned, onPin }: { content: un
   if (text && hasTeammateMsg(text)) {
     const cards = parseTeammateMsgs(text);
     if (cards.length > 0) {
-      // Extract any text outside the teammate-message tags
-      const outside = text.replace(/<teammate-message\b[\s\S]*?<\/teammate-message>/g, "").trim();
+      const outside = text.replace(/<teammate-message\b[\s\S]*?(?:<\/teammate-message>|$)/g, "").trim();
       return (
         <div className="msg">
           {outside && (
             <div className="msg-user copyable" style={{ marginBottom: 6 }}>
-              <div className="msg-user-text">{outside}</div>
+              {looksLikeMarkdown(outside)
+                ? <div className="md-content msg-user-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(outside) }} />
+                : <div className="msg-user-text">{outside}</div>
+              }
             </div>
           )}
           {cards.map((card, i) => <TeammateMessageCard key={i} msg={card} />)}
@@ -792,7 +795,11 @@ function UserMessage({ content, time, showTime, isPinned, onPin }: { content: un
   return (
     <div className="msg">
       <div className={`msg-user copyable ${isPinned ? "is-pinned" : ""}`}>
-        {text && <div className="msg-user-text">{text}</div>}
+        {text && (
+          looksLikeMarkdown(text)
+            ? <div className="md-content msg-user-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
+            : <div className="msg-user-text">{text}</div>
+        )}
         {imageBlocks.length > 0 && <div className="msg-image-row">{imageBlocks}</div>}
         {text && <CopyButton text={text} label="Copy text" />}
         {onPin && <BlockPinBtn isPinned={!!isPinned} onPin={onPin} />}

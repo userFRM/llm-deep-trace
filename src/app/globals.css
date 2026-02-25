@@ -3737,3 +3737,18 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
 }
 .teammate-md { font-size: 12px; }
 .teammate-md table { font-size: 11px; }
+
+/* ── Markdown inside user message bubbles ───────────────────────────────────── */
+.msg-user-md { font-size: 13px; }
+.msg-user-md h1, .msg-user-md h2, .msg-user-md h3 {
+  font-size: 13px; font-weight: 700; margin: 10px 0 4px;
+  color: var(--text-1, #e8e8f0);
+}
+.msg-user-md p { margin: 4px 0; }
+.msg-user-md ul, .msg-user-md ol { padding-left: 18px; margin: 4px 0; }
+.msg-user-md li { margin: 2px 0; }
+.msg-user-md table { border-collapse: collapse; font-size: 11px; width: 100%; margin: 6px 0; }
+.msg-user-md th, .msg-user-md td { padding: 3px 8px; border: 1px solid var(--border, #2a2a35); text-align: left; }
+.msg-user-md th { background: rgba(155,114,239,0.08); font-weight: 600; }
+.msg-user-md code { font-family: var(--font-mono, monospace); font-size: 11px; background: rgba(0,0,0,0.3); padding: 1px 4px; border-radius: 3px; }
+.msg-user-md strong { color: var(--text-1, #e8e8f0); }
