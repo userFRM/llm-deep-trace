@@ -62,18 +62,20 @@ function ContextMenu({
   y,
   session,
   isArchived,
+  selectedCount,
   onClose,
+  onDelete,
 }: {
   x: number;
   y: number;
   session: SessionInfo;
   isArchived: boolean;
+  selectedCount: number;
   onClose: () => void;
+  onDelete: (sessionId: string) => void;
 }) {
   const archiveSession = useStore((s) => s.archiveSession);
   const unarchiveSession = useStore((s) => s.unarchiveSession);
-  const starredSessionIds = useStore((s) => s.starredSessionIds);
-  const toggleStarred = useStore((s) => s.toggleStarred);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -84,41 +86,38 @@ function ContextMenu({
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
+  const deleteLabel = selectedCount > 1
+    ? `Delete ${selectedCount} sessions`
+    : "Delete";
+
   return (
-    <div
-      ref={ref}
-      className="ctx-menu"
-      style={{ top: y, left: x }}
-    >
+    <div ref={ref} className="ctx-menu" style={{ top: y, left: x }}>
       {isArchived ? (
-        <button
-          className="ctx-menu-item"
-          onClick={() => { unarchiveSession(session.sessionId); onClose(); }}
-        >
+        <button className="ctx-menu-item"
+          onClick={() => { unarchiveSession(session.sessionId); onClose(); }}>
           Unarchive
         </button>
       ) : (
-        <button
-          className="ctx-menu-item"
-          onClick={() => { archiveSession(session.sessionId); onClose(); }}
-        >
+        <button className="ctx-menu-item"
+          onClick={() => { archiveSession(session.sessionId); onClose(); }}>
           Archive
         </button>
       )}
-      <button
-        className="ctx-menu-item"
-        onClick={() => { copyToClipboard(session.sessionId, "Session ID copied"); onClose(); }}
-      >
+      <button className="ctx-menu-item"
+        onClick={() => { copyToClipboard(session.sessionId, "Session ID copied"); onClose(); }}>
         Copy ID
       </button>
       {session.filePath && (
-        <button
-          className="ctx-menu-item"
-          onClick={() => { copyToClipboard(session.filePath!, "Path copied"); onClose(); }}
-        >
+        <button className="ctx-menu-item"
+          onClick={() => { copyToClipboard(session.filePath!, "Path copied"); onClose(); }}>
           Copy path
         </button>
       )}
+      <div className="ctx-menu-sep" />
+      <button className="ctx-menu-item ctx-menu-danger"
+        onClick={() => { onDelete(session.sessionId); onClose(); }}>
+        {deleteLabel}
+      </button>
     </div>
   );
 }
@@ -130,6 +129,8 @@ function SessionItem({
   hasSubagents,
   isExpanded,
   isSelected,
+  isChecked,
+  anyChecked,
   isLive,
   isArchived,
   isStarred,
@@ -138,6 +139,7 @@ function SessionItem({
   onToggleExpand,
   onContextMenu,
   onToggleStar,
+  onCheck,
 }: {
   session: SessionInfo;
   isSubagent: boolean;
@@ -145,6 +147,8 @@ function SessionItem({
   hasSubagents: boolean;
   isExpanded: boolean;
   isSelected: boolean;
+  isChecked: boolean;
+  anyChecked: boolean;
   isLive: boolean;
   isArchived: boolean;
   isStarred: boolean;
@@ -153,6 +157,7 @@ function SessionItem({
   onToggleExpand: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, session: SessionInfo) => void;
   onToggleStar: (id: string) => void;
+  onCheck: (id: string, shift: boolean) => void;
 }) {
   const label = sessionLabel(session);
   const src = session.source || "kova";
@@ -167,6 +172,7 @@ function SessionItem({
 
   let cls = "session-item";
   if (isSelected) cls += " selected";
+  if (isChecked) cls += " si-checked";
   if (isSubagent) cls += " subagent";
   if (compact) cls += " compact";
   if (isArchived) cls += " archived";
@@ -181,6 +187,20 @@ function SessionItem({
       onContextMenu={(e) => onContextMenu(e, session)}
     >
       <div className="session-row">
+        {/* Checkbox — visible on hover or when any row is checked */}
+        <button
+          className={`si-check-btn${isChecked ? " si-check-on" : ""}${anyChecked ? " si-check-visible" : ""}`}
+          title={isChecked ? "Deselect" : "Select"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCheck(session.sessionId, e.shiftKey);
+          }}
+        >
+          {isChecked
+            ? <svg width="11" height="11" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="3" fill="#9B72EF"/><path d="M4 7l2 2 4-4" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            : <svg width="11" height="11" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.4"/></svg>
+          }
+        </button>
         {childCount > 0 && (
           <button
             className="expand-btn"
@@ -289,6 +309,10 @@ export default function Sidebar() {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; session: SessionInfo } | null>(null);
   // Collapsed team groups: key = `${parentId}::${teamName}`
   const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set());
+  // Multi-select
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const lastCheckedRef = useRef<string | null>(null);
+  const deleteSessions = useStore((s) => s.deleteSessions);
 
   const toggleTeam = useCallback((parentId: string, teamName: string) => {
     const key = `${parentId}::${teamName}`;
@@ -409,6 +433,44 @@ export default function Sidebar() {
       setCtxMenu({ x: e.clientX, y: e.clientY, session });
     },
     []
+  );
+
+  // Multi-select: toggle with optional shift-range
+  const handleCheck = useCallback(
+    (sessionId: string, shift: boolean) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (shift && lastCheckedRef.current) {
+          // Range select: find all visible session IDs between last and current
+          const allVisible = filteredSessions.map((s) => s.sessionId);
+          const a = allVisible.indexOf(lastCheckedRef.current);
+          const b = allVisible.indexOf(sessionId);
+          if (a !== -1 && b !== -1) {
+            const [lo, hi] = a < b ? [a, b] : [b, a];
+            for (let i = lo; i <= hi; i++) next.add(allVisible[i]);
+          } else {
+            next.has(sessionId) ? next.delete(sessionId) : next.add(sessionId);
+          }
+        } else {
+          next.has(sessionId) ? next.delete(sessionId) : next.add(sessionId);
+        }
+        lastCheckedRef.current = sessionId;
+        return next;
+      });
+    },
+    [filteredSessions]
+  );
+
+  // Delete: if right-clicked session is in selection → delete all selected; else delete just that one
+  const handleDelete = useCallback(
+    (sessionId: string) => {
+      const toDelete = selectedIds.has(sessionId) && selectedIds.size > 1
+        ? [...selectedIds]
+        : [sessionId];
+      setSelectedIds(new Set());
+      deleteSessions(toDelete);
+    },
+    [selectedIds, deleteSessions]
   );
 
   // Keyboard shortcut
@@ -635,6 +697,8 @@ export default function Sidebar() {
                     hasSubagents={hasSubagentsSet.has(s.sessionId)}
                     isExpanded={isExpanded}
                     isSelected={currentSessionId === s.sessionId}
+                    isChecked={selectedIds.has(s.sessionId)}
+                    anyChecked={selectedIds.size > 0}
                     isLive={isLive}
                     isArchived={isArchived}
                     isStarred={starredSessionIds.has(s.sessionId)}
@@ -643,6 +707,7 @@ export default function Sidebar() {
                     onToggleExpand={toggleGroupExpanded}
                     onContextMenu={handleContextMenu}
                     onToggleStar={toggleStarred}
+                    onCheck={handleCheck}
                   />
                   {children.length > 0 && isExpanded && (() => {
                     // Group children by teamName
@@ -668,6 +733,8 @@ export default function Sidebar() {
                         hasSubagents={hasSubagentsSet.has(c.sessionId)}
                         isExpanded={false}
                         isSelected={currentSessionId === c.sessionId}
+                        isChecked={selectedIds.has(c.sessionId)}
+                        anyChecked={selectedIds.size > 0}
                         isLive={activeSessions.has(c.sessionId)}
                         isArchived={archivedSessionIds.has(c.sessionId)}
                         isStarred={starredSessionIds.has(c.sessionId)}
@@ -676,6 +743,7 @@ export default function Sidebar() {
                         onToggleExpand={toggleGroupExpanded}
                         onContextMenu={handleContextMenu}
                         onToggleStar={toggleStarred}
+                        onCheck={handleCheck}
                       />
                     );
 
@@ -732,8 +800,35 @@ export default function Sidebar() {
           y={ctxMenu.y}
           session={ctxMenu.session}
           isArchived={archivedSessionIds.has(ctxMenu.session.sessionId)}
+          selectedCount={
+            selectedIds.has(ctxMenu.session.sessionId) ? selectedIds.size : 1
+          }
           onClose={() => setCtxMenu(null)}
+          onDelete={handleDelete}
         />
+      )}
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="bulk-bar">
+          <span className="bulk-bar-count">{selectedIds.size} selected</span>
+          <button
+            className="bulk-bar-btn bulk-bar-danger"
+            onClick={() => { deleteSessions([...selectedIds]); setSelectedIds(new Set()); }}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M3 4h10M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M4 4l.7 9a1 1 0 001 .9h4.6a1 1 0 001-.9L13 4"
+                stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Delete
+          </button>
+          <button
+            className="bulk-bar-btn"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            Clear
+          </button>
+        </div>
       )}
 
       {/* Footer: expand/collapse all + settings */}

@@ -1,10 +1,30 @@
 "use client";
 
-import React, { useMemo } from "react";
-import { NormalizedMessage } from "@/lib/types";
-import { SessionInfo } from "@/lib/types";
+import React, { useMemo, useCallback, useEffect, useRef } from "react";
+import {
+  ReactFlow,
+  Node,
+  Edge,
+  useReactFlow,
+  ReactFlowProvider,
+  NodeProps,
+  Handle,
+  Position,
+  Background,
+  BackgroundVariant,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { NormalizedMessage, SessionInfo } from "@/lib/types";
 
-// ── Agent type colors ──────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────
+
+const NODE_W  = 190;
+const NODE_H  = 38;
+const H_GAP   = 24;   // horizontal gap between parent right-edge and child left-edge
+const V_GAP   = 8;    // vertical gap between sibling nodes
+const TREE_GAP = 32;  // vertical gap between separate root trees
+
+// ── Agent colors ──────────────────────────────────────────────────────────
 
 const agentColors: Record<string, string> = {
   kova:     "#9B72EF",
@@ -23,204 +43,289 @@ function agentColor(source?: string): string {
   return agentColors[source || "kova"] || "#9B72EF";
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────
+// ── Node component ────────────────────────────────────────────────────────
+
+// React Flow requires [key: string]: unknown on node data types
+interface SessionNodeData extends Record<string, unknown> {
+  sessionId: string;
+  label?: string;
+  source?: string;
+  isHighlighted?: boolean;
+  accentColor?: string;
+  isLive?: boolean;
+}
+
+type SessionNodeType = Node<SessionNodeData, "sessionNode">;
+
+function SessionNodeComponent({ data }: NodeProps<SessionNodeType>) {
+  const color = (data.accentColor as string) || agentColor(data.source as string | undefined);
+  const label = ((data.label as string) || (data.sessionId as string)).slice(0, 28);
+
+  return (
+    <>
+      <Handle type="target" position={Position.Left} id="left"
+        style={{ opacity: 0, width: 1, height: 1 }} />
+      <div
+        className={`gnode${data.isHighlighted ? " gnode-active" : ""}`}
+        style={data.isHighlighted
+          ? { borderColor: color, boxShadow: `0 0 0 1px ${color}55, 0 0 8px ${color}30` }
+          : undefined}
+      >
+        <span className="gnode-dot" style={{ background: color }} />
+        <span className="gnode-label" title={data.label || data.sessionId}>
+          {label}
+        </span>
+        {data.isLive && <span className="gnode-live" />}
+      </div>
+      <Handle type="source" position={Position.Right} id="right"
+        style={{ opacity: 0, width: 1, height: 1 }} />
+    </>
+  );
+}
+
+const nodeTypes = { sessionNode: SessionNodeComponent };
+
+// ── Tree layout ───────────────────────────────────────────────────────────
+
+function buildGraph(
+  sessions: SessionInfo[],
+  activeSessions: Set<string>,
+  highlightId: string | null
+): { nodes: Node[], edges: Edge[] } {
+  if (!sessions.length) return { nodes: [], edges: [] };
+
+  // Index
+  const byId = new Map(sessions.map(s => [s.sessionId, s]));
+  const childrenOf = new Map<string, SessionInfo[]>();
+  const roots: SessionInfo[] = [];
+
+  for (const s of sessions) {
+    const validParent = s.parentSessionId && byId.has(s.parentSessionId);
+    if (validParent) {
+      if (!childrenOf.has(s.parentSessionId!)) childrenOf.set(s.parentSessionId!, []);
+      childrenOf.get(s.parentSessionId!)!.push(s);
+    } else {
+      roots.push(s);
+    }
+  }
+
+  // Sort roots: most recent first
+  roots.sort((a, b) => b.lastUpdated - a.lastUpdated);
+  // Sort children: oldest first (chronological within a tree)
+  for (const [, children] of childrenOf) {
+    children.sort((a, b) => a.lastUpdated - b.lastUpdated);
+  }
+
+  // Memoised subtree height
+  const heightCache = new Map<string, number>();
+  function subtreeH(id: string): number {
+    if (heightCache.has(id)) return heightCache.get(id)!;
+    const children = childrenOf.get(id) || [];
+    let h: number;
+    if (!children.length) {
+      h = NODE_H;
+    } else {
+      const total = children.reduce(
+        (sum, c) => sum + subtreeH(c.sessionId) + V_GAP, -V_GAP
+      );
+      h = Math.max(total, NODE_H);
+    }
+    heightCache.set(id, h);
+    return h;
+  }
+
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  function place(s: SessionInfo, x: number, topY: number, parentId?: string) {
+    const h  = subtreeH(s.sessionId);
+    const ny = topY + (h - NODE_H) / 2;
+
+    nodes.push({
+      id:       s.sessionId,
+      type:     "sessionNode",
+      position: { x, y: ny },
+      data: {
+        ...s,
+        isHighlighted: s.sessionId === highlightId,
+        accentColor:   agentColor(s.source),
+        isLive:        activeSessions.has(s.sessionId),
+      } as SessionNodeData,
+      style: { width: NODE_W, height: NODE_H },
+    });
+
+    if (parentId) {
+      edges.push({
+        id:     `${parentId}→${s.sessionId}`,
+        source: parentId,
+        target: s.sessionId,
+        sourceHandle: "right",
+        targetHandle: "left",
+        type:   "smoothstep",
+        style:  { stroke: "#252530", strokeWidth: 1.5 },
+      });
+    }
+
+    const children = childrenOf.get(s.sessionId) || [];
+    let cy = topY;
+    for (const child of children) {
+      place(child, x + NODE_W + H_GAP, cy, s.sessionId);
+      cy += subtreeH(child.sessionId) + V_GAP;
+    }
+  }
+
+  let y = 0;
+  for (const root of roots) {
+    place(root, 0, y);
+    y += subtreeH(root.sessionId) + TREE_GAP;
+  }
+
+  return { nodes, edges };
+}
+
+// ── Inner flow (needs ReactFlowProvider context) ───────────────────────────
+
+function InnerFlow({
+  sessions,
+  activeSessions,
+  currentSessionId,
+  onNavigateSession,
+  onResetView,
+}: {
+  sessions: SessionInfo[];
+  activeSessions: Set<string>;
+  currentSessionId: string | null;
+  onNavigateSession: (id: string) => void;
+  onResetView?: (fn: () => void) => void;
+}) {
+  const { setCenter, getNode, fitView } = useReactFlow();
+  const prevHighlightRef = useRef<string | null>(null);
+
+  const { nodes, edges } = useMemo(
+    () => buildGraph(sessions, activeSessions, currentSessionId),
+    [sessions, activeSessions, currentSessionId]
+  );
+
+  // Auto-pan to active node when it changes
+  useEffect(() => {
+    if (!currentSessionId || currentSessionId === prevHighlightRef.current) return;
+    prevHighlightRef.current = currentSessionId;
+    // Small delay so the node is rendered first
+    const t = setTimeout(() => {
+      const node = getNode(currentSessionId);
+      if (node) {
+        setCenter(
+          node.position.x + NODE_W / 2,
+          node.position.y + NODE_H / 2,
+          { zoom: 1.4, duration: 350 }
+        );
+      }
+    }, 80);
+    return () => clearTimeout(t);
+  }, [currentSessionId, getNode, setCenter]);
+
+  // Expose fitView for reset button
+  useEffect(() => {
+    if (onResetView) onResetView(() => fitView({ duration: 400, padding: 0.1 }));
+  }, [fitView, onResetView]);
+
+  const onNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      onNavigateSession(node.id);
+    },
+    [onNavigateSession]
+  );
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      nodeTypes={nodeTypes}
+      onNodeClick={onNodeClick}
+      fitView
+      fitViewOptions={{ padding: 0.15 }}
+      minZoom={0.05}
+      maxZoom={2}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      elementsSelectable={false}
+      panOnScroll
+      zoomOnScroll
+      className="session-graph-flow"
+    >
+      <Background
+        variant={BackgroundVariant.Dots}
+        gap={20}
+        size={1}
+        color="#1a1a24"
+      />
+    </ReactFlow>
+  );
+}
+
+// ── Props ─────────────────────────────────────────────────────────────────
 
 interface SessionTreeProps {
-  messages: NormalizedMessage[];      // kept for API compat, not used
-  sessionId: string;                  // map root (parent session)
+  // kept for API compat
+  messages: NormalizedMessage[];
+  sessionId: string;
   sessionLabel: string;
+  highlightSessionId?: string;
+  // real props
   allSessions: SessionInfo[];
-  highlightSessionId?: string;        // currently active session
-  onScrollToMessage: (idx: number) => void;  // kept for API compat
+  activeSessions?: Set<string>;
+  onScrollToMessage: (idx: number) => void;
   onNavigateSession: (keyOrId: string) => void;
   onClose: () => void;
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────
-
-function AgentDot({ source, size = 8 }: { source?: string; size?: number }) {
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: agentColor(source),
-        flexShrink: 0,
-      }}
-    />
-  );
-}
-
-interface NodeCardProps {
-  session: SessionInfo;
-  isActive: boolean;
-  isRoot?: boolean;
-  isLive?: boolean;
-  onClick: () => void;
-}
-
-function NodeCard({ session, isActive, isRoot, isLive, onClick }: NodeCardProps) {
-  const color = agentColor(session.source);
-  const label = session.label || session.sessionId.slice(0, 20);
-
-  return (
-    <button
-      className={`map-node${isActive ? " map-node-active" : ""}${isRoot ? " map-node-root" : ""}`}
-      style={isActive ? { borderColor: color, boxShadow: `0 0 0 1px ${color}44, 0 0 10px 0 ${color}22` } : undefined}
-      onClick={onClick}
-      title={label}
-    >
-      <AgentDot source={session.source} size={isRoot ? 9 : 7} />
-      <span className="map-node-label">{label}</span>
-      {isLive && <span className="map-node-live" />}
-      {isActive && !isRoot && (
-        <span className="map-node-you">you</span>
-      )}
-    </button>
-  );
-}
-
-// ── Main component ─────────────────────────────────────────────────────────
+// ── Outer component ───────────────────────────────────────────────────────
 
 export default function SessionTree({
-  sessionId,
-  sessionLabel,
   allSessions,
+  activeSessions,
   highlightSessionId,
   onNavigateSession,
   onClose,
 }: SessionTreeProps) {
-  // Root session
-  const rootSession = useMemo(
-    () => allSessions.find(s => s.sessionId === sessionId) || {
-      sessionId,
-      label: sessionLabel,
-      source: "claude",
-      key: sessionId,
-      lastUpdated: 0,
-      channel: "",
-      chatType: "",
-      messageCount: 0,
-      preview: "",
-      isActive: true,
-      isDeleted: false,
-      isSubagent: false,
-      compactionCount: 0,
-    } as SessionInfo,
-    [allSessions, sessionId, sessionLabel]
+  const resetViewRef = useRef<(() => void) | null>(null);
+  const activeSet = useMemo(
+    () => activeSessions || new Set<string>(),
+    [activeSessions]
   );
-
-  // Direct children of the root
-  const children = useMemo(
-    () => allSessions
-      .filter(s => s.parentSessionId === sessionId)
-      .sort((a, b) => a.lastUpdated - b.lastUpdated),
-    [allSessions, sessionId]
-  );
-
-  // Group children by teamName
-  const { teamGroups, ungrouped } = useMemo(() => {
-    const groups = new Map<string, SessionInfo[]>();
-    const direct: SessionInfo[] = [];
-    for (const c of children) {
-      if (c.teamName) {
-        if (!groups.has(c.teamName)) groups.set(c.teamName, []);
-        groups.get(c.teamName)!.push(c);
-      } else {
-        direct.push(c);
-      }
-    }
-    return { teamGroups: groups, ungrouped: direct };
-  }, [children]);
-
-  const hasTeams = teamGroups.size > 0;
-
-  // Active sessions
-  const activeIds = useMemo(
-    () => new Set(allSessions.filter(s => s.isActive).map(s => s.sessionId)),
-    [allSessions]
-  );
-
-  const isRootActive = highlightSessionId === sessionId;
 
   return (
     <div className="tree-panel">
       <div className="tree-panel-header">
         <span className="tree-panel-title">Conversation Map</span>
-        <button className="tree-panel-close" onClick={onClose} title="Close">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-            <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </button>
-      </div>
-
-      <div className="map-body">
-        {/* Root node */}
-        <div className="map-root-row">
-          <NodeCard
-            session={rootSession}
-            isActive={isRootActive}
-            isRoot
-            isLive={activeIds.has(sessionId)}
-            onClick={() => onNavigateSession(sessionId)}
-          />
+        <div style={{ display: "flex", gap: 4 }}>
+          <button
+            className="tree-panel-close"
+            onClick={() => resetViewRef.current?.()}
+            title="Fit all"
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M2 8a6 6 0 1012 0A6 6 0 002 8z" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M8 5v3l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+          <button className="tree-panel-close" onClick={onClose} title="Close">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </button>
         </div>
-
-        {children.length === 0 && (
-          <div className="map-empty">no subagents</div>
-        )}
-
-        {children.length > 0 && (
-          <div className="map-children">
-            {/* Team groups */}
-            {Array.from(teamGroups.entries()).map(([teamName, members]) => (
-              <div key={teamName} className="map-team">
-                <div className="map-team-label">
-                  <span className="map-team-name">{teamName}</span>
-                  <span className="map-team-count">{members.length}</span>
-                </div>
-                <div className="map-team-members">
-                  {members.map(c => (
-                    <div key={c.sessionId} className="map-child-row">
-                      <NodeCard
-                        session={c}
-                        isActive={highlightSessionId === c.sessionId}
-                        isLive={activeIds.has(c.sessionId)}
-                        onClick={() => onNavigateSession(c.sessionId)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {/* Ungrouped direct subagents */}
-            {ungrouped.length > 0 && (
-              <div className={hasTeams ? "map-team" : ""}>
-                {hasTeams && (
-                  <div className="map-team-label">
-                    <span className="map-team-name">direct</span>
-                    <span className="map-team-count">{ungrouped.length}</span>
-                  </div>
-                )}
-                <div className={hasTeams ? "map-team-members" : ""}>
-                  {ungrouped.map(c => (
-                    <div key={c.sessionId} className="map-child-row">
-                      <NodeCard
-                        session={c}
-                        isActive={highlightSessionId === c.sessionId}
-                        isLive={activeIds.has(c.sessionId)}
-                        onClick={() => onNavigateSession(c.sessionId)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+      </div>
+      <div className="tree-panel-body">
+        <ReactFlowProvider>
+          <InnerFlow
+            sessions={allSessions}
+            activeSessions={activeSet}
+            currentSessionId={highlightSessionId || null}
+            onNavigateSession={onNavigateSession}
+            onResetView={(fn) => { resetViewRef.current = fn; }}
+          />
+        </ReactFlowProvider>
       </div>
     </div>
   );

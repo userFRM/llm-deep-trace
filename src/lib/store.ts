@@ -68,6 +68,7 @@ interface AppState {
   setScrollTargetIndex: (idx: number | null) => void;
   archiveSession: (sessionId: string) => void;
   unarchiveSession: (sessionId: string) => void;
+  deleteSessions: (sessionIds: string[]) => Promise<void>;
   setSidebarTab: (tab: "browse" | "favourites" | "pinned" | "archived" | "analytics") => void;
   setActiveSessions: (ids: Set<string>) => void;
   toggleHiddenBlockType: (cat: BlockCategory) => void;
@@ -446,6 +447,34 @@ export const useStore = create<AppState>((set, get) => ({
     set({ archivedSessionIds: ids });
     saveArchivedIds(ids);
     get().applyFilter();
+  },
+
+  deleteSessions: async (sessionIds) => {
+    const { sessions, currentSessionId } = get();
+    const toDelete = new Set(sessionIds);
+
+    // Remove from store immediately
+    const next = sessions.filter((s) => !toDelete.has(s.sessionId));
+    set({ sessions: next });
+
+    // If the currently-viewed session was deleted, clear the panel
+    if (currentSessionId && toDelete.has(currentSessionId)) {
+      set({ currentSessionId: null, currentMessages: [] });
+    }
+
+    get().applyFilter();
+
+    // Fire DELETE requests for each session that has a filePath
+    const targets = sessions.filter((s) => toDelete.has(s.sessionId) && s.filePath);
+    await Promise.allSettled(
+      targets.map((s) =>
+        fetch(`/api/sessions/${s.sessionId}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filePath: s.filePath }),
+        })
+      )
+    );
   },
 
   setSidebarTab: (tab) => {
