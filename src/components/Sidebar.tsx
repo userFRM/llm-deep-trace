@@ -287,6 +287,18 @@ export default function Sidebar() {
   const [ftLoading, setFtLoading] = useState(false);
   const [ftActive, setFtActive] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; session: SessionInfo } | null>(null);
+  // Collapsed team groups: key = `${parentId}::${teamName}`
+  const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set());
+
+  const toggleTeam = useCallback((parentId: string, teamName: string) => {
+    const key = `${parentId}::${teamName}`;
+    setCollapsedTeams(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   const handleSearchChange = useCallback(
     (value: string) => {
@@ -667,43 +679,42 @@ export default function Sidebar() {
                       />
                     );
 
-                    return (
-                      <div className={`subagent-children${hasTeams ? " has-teams" : ""}`}>
-                        {/* Team groups */}
-                        {Array.from(teamGroups.entries()).map(([teamName, members]) => (
-                          <div key={teamName} className="team-group">
-                            <div className="team-group-header">
-                              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                                <circle cx="4" cy="4" r="2" stroke="currentColor" strokeWidth="1.4"/>
-                                <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4"/>
-                                <path d="M6 4v1.5a1 1 0 001 1H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                              </svg>
-                              <span className="team-group-name">{teamName}</span>
-                              <span className="team-group-count">{members.length}</span>
-                            </div>
+                    const renderTeamGroup = (groupName: string, members: typeof children, isDirectGroup = false) => {
+                      const teamKey = `${s.sessionId}::${groupName}`;
+                      const isCollapsed = collapsedTeams.has(teamKey);
+                      const hasActive = members.some(c => currentSessionId === c.sessionId);
+                      return (
+                        <div key={groupName} className={`team-group${isDirectGroup ? " team-group-direct" : ""}`}>
+                          <button
+                            className={`team-group-header${hasActive ? " has-active" : ""}`}
+                            onClick={() => toggleTeam(s.sessionId, groupName)}
+                          >
+                            <svg
+                              width="8" height="8" viewBox="0 0 8 8" fill="none"
+                              style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.15s", flexShrink: 0 }}
+                            >
+                              <path d="M1 2.5l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                            <span className="team-group-name">{groupName}</span>
+                            <span className="team-group-count">{members.length}</span>
+                            {hasActive && <span className="team-group-active-dot" />}
+                          </button>
+                          {!isCollapsed && (
                             <div className="team-group-members">
                               {members.map(renderChild)}
                             </div>
-                          </div>
-                        ))}
-                        {/* Ungrouped direct subagents */}
-                        {ungrouped.length > 0 && (
-                          <div className={hasTeams ? "team-group" : ""}>
-                            {hasTeams && (
-                              <div className="team-group-header">
-                                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                                  <rect x="1.5" y="1.5" width="9" height="9" rx="2" stroke="currentColor" strokeWidth="1.4"/>
-                                  <path d="M4 6h4M6 4v4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-                                </svg>
-                                <span className="team-group-name">direct</span>
-                                <span className="team-group-count">{ungrouped.length}</span>
-                              </div>
-                            )}
-                            <div className={hasTeams ? "team-group-members" : ""}>
-                              {ungrouped.map(renderChild)}
-                            </div>
-                          </div>
+                          )}
+                        </div>
+                      );
+                    };
+
+                    return (
+                      <div className={`subagent-children${hasTeams ? " has-teams" : ""}`}>
+                        {Array.from(teamGroups.entries()).map(([teamName, members]) =>
+                          renderTeamGroup(teamName, members)
                         )}
+                        {ungrouped.length > 0 && hasTeams && renderTeamGroup("direct", ungrouped, true)}
+                        {ungrouped.length > 0 && !hasTeams && ungrouped.map(renderChild)}
                       </div>
                     );
                   })()}

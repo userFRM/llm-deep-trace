@@ -1679,22 +1679,28 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 8px 2px 8px;
+  padding: 4px 8px 3px 8px;
   color: var(--text-3);
   font-size: 10px;
   font-family: var(--mono);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  border-left: 2px solid var(--accent-border);
-  margin-left: 2px;
-  cursor: default;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  border-radius: 4px;
 }
 
-.team-group-header svg {
-  flex-shrink: 0;
+.team-group-header:hover {
+  background: var(--surface-2);
+}
+
+.team-group-header.has-active .team-group-name {
   color: var(--accent);
-  opacity: 0.7;
+  opacity: 1;
 }
 
 .team-group-name {
@@ -1702,8 +1708,7 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--accent);
-  opacity: 0.8;
+  color: var(--text-3);
 }
 
 .team-group-count {
@@ -1716,10 +1721,19 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   flex-shrink: 0;
 }
 
+.team-group-active-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
 .team-group-members {
   border-left: 2px solid var(--accent-border);
-  margin-left: 10px;
+  margin-left: 14px;
   padding-left: 2px;
+  margin-bottom: 2px;
 }
 
 .team-badge {
