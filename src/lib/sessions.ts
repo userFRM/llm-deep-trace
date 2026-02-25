@@ -406,7 +406,7 @@ export function listClaudeSessions(): SessionInfo[] {
         ? sessionCwd.split("/").filter(Boolean).pop() || ""
         : "";
       const label = isSubagent
-        ? (subagentLabel || sessionId)
+        ? (subagentLabel || preview || sessionId)  // own first message as fallback
         : (preview || cwdBasename || projectLabel.split("/").pop() || sessionId.slice(0, 14));
 
       sessions.push({

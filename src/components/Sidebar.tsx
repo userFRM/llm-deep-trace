@@ -228,6 +228,14 @@ function SessionItem({
           <span className="subagent-badge">subagent</span>
         )}
         {!isSubagent && isPlanSession(session) && <span className="plan-badge">plan</span>}
+        {/* Message count pill — always visible */}
+        {(session.messageCount || 0) > 0 ? (
+          <span className="msg-count-pill" title={`${session.messageCount} messages`}>
+            {session.messageCount}
+          </span>
+        ) : (
+          <span className="msg-count-pill msg-count-empty" title="No messages">0</span>
+        )}
         <button
           className={`star-btn ${isStarred ? "starred" : ""}`}
           title={isStarred ? "Unstar" : "Star session"}
@@ -855,6 +863,24 @@ export default function Sidebar() {
               <path d="M3 14h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
             </svg>
             <span>collapse all</span>
+          </button>
+          <button
+            className="sidebar-footer-btn"
+            title="Select all empty sessions (0 messages)"
+            onClick={() => {
+              const emptyIds = new Set(
+                filteredSessions
+                  .filter(s => (s.messageCount || 0) === 0)
+                  .map(s => s.sessionId)
+              );
+              setSelectedIds(emptyIds);
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.3"/>
+              <path d="M6 8h4M8 6v4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            </svg>
+            <span>select empty</span>
           </button>
         </div>
         <button
