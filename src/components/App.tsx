@@ -77,20 +77,26 @@ export default function App() {
     return () => mq.removeEventListener("change", handler);
   }, [setTheme, initFromLocalStorage]);
 
+  // Initial session load — runs ONCE on mount only.
+  // Do NOT add currentSessionId to deps — deletion sets it null which would retrigger this
+  // and fetch all-sessions from disk (overwriting the tombstone-filtered store).
+  const didInitRef = useRef(false);
   useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
     fetch("/api/all-sessions")
       .then((r) => r.json())
       .then((data) => {
         setSessions(data);
-        if (!currentSessionId && data.length) {
-          const main = data.find(
-            (s: { key: string }) => s.key === "agent:main:main"
-          );
+        const cur = useStore.getState().currentSessionId;
+        if (!cur && data.length) {
+          const main = data.find((s: { key: string }) => s.key === "agent:main:main");
           setCurrentSession(main ? main.sessionId : data[0].sessionId);
         }
       })
       .catch(() => {});
-  }, [setSessions, setCurrentSession, currentSessionId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useSSE();
 
