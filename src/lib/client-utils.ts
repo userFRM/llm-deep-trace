@@ -185,6 +185,12 @@ export function looksLikeMarkdown(text: string): boolean {
 export function cleanPreview(text: string): string {
   if (!text) return "";
   return text
+    // Strip OpenClaw timestamp prefix [Thu 2026-02-19 16:02 GMT+1]
+    .replace(/^\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}[^\]]*\]\s*/i, "")
+    // Strip [media attached: ...] prefix
+    .replace(/^\[media attached:[^\]]*\]\s*/i, "")
+    // Strip System: [...] prefix
+    .replace(/^System:\s*\[[^\]]*\]\s*/i, "")
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/\*\*(.+?)\*\*/g, "$1")
     .replace(/\*(.+?)\*/g, "$1")
@@ -261,12 +267,19 @@ export function sessionLabel(s: {
 }): string {
   const src = s.source || "kova";
 
+  // Strip OpenClaw timestamp prefix from any string
+  const stripTs = (t: string) => t
+    .replace(/^\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}[^\]]*\]\s*/i, "")
+    .replace(/^\[media attached:[^\]]*\]\s*/i, "")
+    .replace(/^System:\s*\[[^\]]*\]\s*/i, "")
+    .trim();
+
   // Kova/OpenClaw sessions
   if (src === "kova") {
     if (s.key === "agent:main:main") return "main session";
-    if (s.title) return s.title;
-    if (s.label) return s.label;
-    if (s.preview) return s.preview.slice(0, 60);
+    if (s.title) return stripTs(s.title) || s.title;
+    if (s.label) return stripTs(s.label) || s.label;
+    if (s.preview) return (stripTs(s.preview) || s.preview).slice(0, 60);
     if (s.key) {
       const parts = s.key.split(":");
       if (parts.length > 2) return parts.slice(1).join(":");

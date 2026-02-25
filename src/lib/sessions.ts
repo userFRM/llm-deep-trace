@@ -163,9 +163,25 @@ export function listKovaSessions(): SessionInfo[] {
 
 // ── Preview cleaning ──────────────────────────────────────────────────────
 
+/** Strip timestamp prefixes from OpenClaw session titles, e.g. [Thu 2026-02-19 16:02 GMT+1] */
+function stripTimestampPrefix(s: string): string {
+  return s
+    // [Day YYYY-MM-DD HH:MM TZ] prefix
+    .replace(/^\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}[^\]]*\]\s*/i, "")
+    // [media attached: ...] prefix
+    .replace(/^\[media attached:[^\]]*\]\s*/i, "")
+    // System: [...] prefix
+    .replace(/^System:\s*\[[^\]]*\]\s*/i, "")
+    .trim();
+}
+
 /** Strip internal XML payloads and noise from Claude session previews */
 function cleanSessionPreview(raw: string): string {
   if (!raw) return "";
+
+  // Strip timestamp prefix first
+  const noTs = stripTimestampPrefix(raw);
+  if (noTs !== raw) return noTs.slice(0, 120);
 
   // Looks like a raw session/tool ID (hex string) — skip entirely
   if (/^[0-9a-f]{8,}\s/.test(raw.trim()) || /^[0-9a-f]{32,}$/.test(raw.trim())) return "";
