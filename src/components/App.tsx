@@ -32,6 +32,9 @@ export default function App() {
   const sidebarTab = useStore((s) => s.sidebarTab);
 
   const treeDragging = useRef(false);
+  const treeNavRef = useRef(false); // true when navigation came from the conversation map
+  const sessionsRef = useRef(sessions); // stable ref so effects don't re-run on every SSE update
+  sessionsRef.current = sessions;
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [showSetup, setShowSetup] = useState<boolean | null>(null); // null = not yet checked
 
@@ -109,10 +112,16 @@ export default function App() {
     };
   }, [currentSessionId, activeSessions, sessions, setMessages]);
 
-  // Auto-show/hide tree panel based on subagents
+  // Auto-show/hide tree panel based on subagents.
+  // Uses sessionsRef (not sessions) so SSE-triggered sessions array updates
+  // don't re-run this effect and undo the treeNavRef guard.
   useEffect(() => {
     if (!currentSessionId) return;
-    const sess = sessions.find((s) => s.sessionId === currentSessionId);
+    if (treeNavRef.current) {
+      treeNavRef.current = false;
+      return;
+    }
+    const sess = sessionsRef.current.find((s) => s.sessionId === currentSessionId);
     if (!sess) return;
 
     if (sess.hasSubagents) {
@@ -122,11 +131,18 @@ export default function App() {
     } else {
       setTreePanelOpen(false);
     }
-  }, [currentSessionId, sessions, treePanelManualClose, setTreePanelOpen]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId, treePanelManualClose, setTreePanelOpen]);
 
-  // Reset manual close when switching sessions
+  // Reset manual close when switching sessions (but not from tree nav)
+  const prevSessionRef = useRef(currentSessionId);
   useEffect(() => {
-    setTreePanelManualClose(false);
+    if (prevSessionRef.current !== currentSessionId) {
+      prevSessionRef.current = currentSessionId;
+      if (!treeNavRef.current) {
+        setTreePanelManualClose(false);
+      }
+    }
   }, [currentSessionId, setTreePanelManualClose]);
 
   const handleScrollToMessage = useCallback(
@@ -149,6 +165,7 @@ export default function App() {
           ("agent-" + keyOrId) === s.sessionId
       );
       if (target) {
+        treeNavRef.current = true; // keep tree panel open
         setCurrentSession(target.sessionId);
       }
     },

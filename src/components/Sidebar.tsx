@@ -50,6 +50,13 @@ const BotSvg = () => (
   </svg>
 );
 
+const PLAN_KEYWORDS = /\b(plan|step\s*\d|task\s*list|implement|phase\s*\d|milestone|roadmap|execute)\b/i;
+
+function isPlanSession(session: SessionInfo): boolean {
+  const text = `${session.label || ""} ${session.preview || ""}`;
+  return PLAN_KEYWORDS.test(text);
+}
+
 function ContextMenu({
   x,
   y,
@@ -195,6 +202,7 @@ function SessionItem({
         {isLive && <span className="live-badge-small">live</span>}
         {hasSubagents && <BotSvg />}
         {isSubagent && <span className="subagent-badge">subagent</span>}
+        {!isSubagent && isPlanSession(session) && <span className="plan-badge">plan</span>}
         <button
           className={`star-btn ${isStarred ? "starred" : ""}`}
           title={isStarred ? "Unstar" : "Star session"}

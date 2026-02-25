@@ -442,8 +442,9 @@ html, body {
 }
 
 .subagent-children {
-  border-left: 1px solid var(--border);
-  margin-left: 20px;
+  border-left: 2px solid var(--accent-border);
+  margin-left: 24px;
+  padding-left: 2px;
 }
 
 /* ── Settings Panel ──────────────── */
@@ -1650,6 +1651,18 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   letter-spacing: 0.02em;
 }
 
+.plan-badge {
+  font-size: 9px;
+  font-family: var(--mono);
+  color: #22C55E;
+  background: rgba(34,197,94,0.08);
+  border: 1px solid rgba(34,197,94,0.25);
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
 /* ── Light Theme ─────────────────── */
 
 .theme-light {
@@ -2006,12 +2019,32 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
   font-weight: 500;
   padding: 1px 5px;
   border-radius: 3px;
-  background: var(--accent-dim);
+  background: transparent;
   border: 1px solid var(--accent-border);
   color: var(--accent);
   flex-shrink: 0;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+/* Selected node highlight */
+.tree-node-card.tree-node-selected {
+  box-shadow: 0 0 0 2px currentColor, 0 0 12px 2px rgba(155,114,239,0.25);
+  border-color: #9B72EF !important;
+}
+.tree-node-turn.tree-node-selected {
+  box-shadow: 0 0 0 2px #9B72EF, 0 0 12px 2px rgba(155,114,239,0.20);
+}
+.tree-node-subagent.tree-node-selected {
+  background: rgba(155,114,239,0.06);
+}
+
+/* Agent-type dot inside subagent node */
+.tree-node-source-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* Scroll-to highlight animation */

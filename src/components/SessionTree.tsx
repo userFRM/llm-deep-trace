@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useCallback, useEffect, useRef } from "react";
+import React, { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
   Node,
@@ -10,6 +10,7 @@ import {
   NodeProps,
   Handle,
   Position,
+  MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { NormalizedMessage, ContentBlock } from "@/lib/types";
@@ -41,6 +42,7 @@ interface TurnNodeData {
   messageIndex: number;
   preview: string;
   hasSubagents: boolean;
+  isSelected?: boolean;
   [key: string]: unknown;
 }
 
@@ -48,8 +50,25 @@ interface SubagentNodeData {
   label: string;
   fullLabel: string;
   agentKey: string;
+  source?: string;
+  accentColor?: string;
+  isSelected?: boolean;
   [key: string]: unknown;
 }
+
+const agentColors: Record<string, string> = {
+  kova:      "#9B72EF",
+  claude:    "#9B72EF",
+  codex:     "#22C55E",
+  kimi:      "#F59E0B",
+  gemini:    "#3B82F6",
+  opencode:  "#14B8A6",
+  aider:     "#EC4899",
+  continue:  "#8B5CF6",
+  cursor:    "#6366F1",
+  copilot:   "#64748B",
+  factory:   "#F97316",
+};
 
 interface SessionTreeProps {
   messages: NormalizedMessage[];
@@ -185,7 +204,10 @@ function TurnNodeComponent({ data }: NodeProps<Node<TurnNodeData>>) {
   return (
     <>
       <Handle type="target" position={Position.Top} className="tree-handle" />
-      <div className="tree-node-card tree-node-turn" title={data.preview}>
+      <div
+        className={`tree-node-card tree-node-turn${data.isSelected ? " tree-node-selected" : ""}`}
+        title={data.preview}
+      >
         <div className="tree-node-top">
           <span className="tree-turn-label">Turn {data.turnIndex}</span>
         </div>
@@ -210,13 +232,26 @@ function TurnNodeComponent({ data }: NodeProps<Node<TurnNodeData>>) {
 }
 
 function SubagentNodeComponent({ data }: NodeProps<Node<SubagentNodeData>>) {
+  const accent = data.accentColor || "#9B72EF";
   return (
     <>
       <Handle type="target" position={Position.Left} className="tree-handle" />
-      <div className="tree-node-card tree-node-subagent" title={data.fullLabel || data.label}>
+      <div
+        className={`tree-node-card tree-node-subagent${data.isSelected ? " tree-node-selected" : ""}`}
+        title={data.fullLabel || data.label}
+        style={{ borderColor: data.isSelected ? accent : `${accent}55` }}
+      >
         <div className="tree-node-top">
+          <span
+            className="tree-node-source-dot"
+            style={{ background: accent }}
+          />
           <span className="tree-node-title">{data.label}</span>
-          <span className="tree-node-badge">subagent</span>
+          {data.source && (
+            <span className="tree-node-badge" style={{ color: accent, borderColor: `${accent}44` }}>
+              {data.source}
+            </span>
+          )}
         </div>
       </div>
     </>
@@ -335,6 +370,7 @@ function InnerFlow({
   onResetView?: (fn: () => void) => void;
 }) {
   const { fitView } = useReactFlow();
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   // Real child sessions from the session index (works for both Task and TaskCreate/Agent Teams)
   const childSessions = useMemo(
@@ -383,10 +419,50 @@ function InnerFlow({
     return raw;
   }, [messages, childSessions]);
 
-  const { nodes, edges } = useMemo(
+  const { nodes: rawNodes, edges: rawEdges } = useMemo(
     () => layoutTurns(turns, label),
     [turns, label]
   );
+
+  // Build sessionId → source lookup for agent-type coloring
+  const sessionById = useMemo(() => {
+    const m = new Map<string, import("@/lib/types").SessionInfo>();
+    for (const s of allSessions) m.set(s.sessionId, s);
+    return m;
+  }, [allSessions]);
+
+  // Enrich nodes with selection state and agent-type colors
+  const nodes = useMemo(() => rawNodes.map((node) => {
+    if (node.type === "subagentNode") {
+      const d = node.data as SubagentNodeData;
+      const sess = d.agentKey ? sessionById.get(d.agentKey) : undefined;
+      const source = sess?.source || "kova";
+      const accentColor = agentColors[source] || "#9B72EF";
+      return {
+        ...node,
+        data: { ...d, source, accentColor, isSelected: node.id === selectedNodeId },
+      };
+    }
+    if (node.type === "turnNode") {
+      return {
+        ...node,
+        data: { ...node.data, isSelected: node.id === selectedNodeId },
+      };
+    }
+    return node;
+  }), [rawNodes, selectedNodeId, sessionById]);
+
+  // Add directional arrow markers to edges
+  const edges = useMemo(() => rawEdges.map((edge) => ({
+    ...edge,
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 10,
+      height: 10,
+      color: "#2a2a38",
+    },
+    style: { ...edge.style, stroke: "#2a2a38", strokeWidth: 1.5 },
+  })), [rawEdges]);
 
   // Fit once on mount only — never re-fit while user is browsing
   const hasFitted = useRef(false);
@@ -412,6 +488,7 @@ function InnerFlow({
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      setSelectedNodeId((prev) => (prev === node.id ? null : node.id));
       if (node.type === "turnNode") {
         const d = node.data as TurnNodeData;
         onScrollToMessage(d.messageIndex);
