@@ -754,7 +754,7 @@ function hasTeammateMsg(text: string): boolean {
   return /<teammate-message\b/.test(text);
 }
 
-function UserMessage({ content, time, showTime, isPinned, onPin }: { content: unknown; time: string; showTime: boolean; isPinned?: boolean; onPin?: () => void }) {
+function UserMessage({ content, time, showTime, isPinned, isOrchestrated, onPin }: { content: unknown; time: string; showTime: boolean; isPinned?: boolean; isOrchestrated?: boolean; onPin?: () => void }) {
   let text = extractText(content);
   text = stripConversationMeta(text);
 
@@ -790,6 +790,26 @@ function UserMessage({ content, time, showTime, isPinned, onPin }: { content: un
         </div>
       );
     }
+  }
+
+  // Orchestrated = injected by the orchestrator in a subagent session, not a human
+  if (isOrchestrated) {
+    return (
+      <div className="msg">
+        <div className={`msg-orchestrated copyable ${isPinned ? "is-pinned" : ""}`}>
+          <div className="msg-orchestrated-label">orchestrator</div>
+          {text && (
+            looksLikeMarkdown(text)
+              ? <div className="md-content msg-user-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
+              : <div className="msg-orchestrated-text">{text}</div>
+          )}
+          {imageBlocks.length > 0 && <div className="msg-image-row">{imageBlocks}</div>}
+          {text && <CopyButton text={text} label="Copy text" />}
+          {onPin && <BlockPinBtn isPinned={!!isPinned} onPin={onPin} />}
+        </div>
+        {showTime && <div className="msg-time">{time}</div>}
+      </div>
+    );
   }
 
   return (
@@ -1079,6 +1099,7 @@ function MessageRenderer({
   msgIndex,
   pinnedBlockIds,
   onPinBlock,
+  isSubagentSession,
 }: {
   entry: NormalizedMessage;
   allThinkingExpanded: boolean;
@@ -1091,6 +1112,7 @@ function MessageRenderer({
   msgIndex?: number;
   pinnedBlockIds?: Set<string>;
   onPinBlock?: (blockId: string, blockType: string, preview: string) => void;
+  isSubagentSession?: boolean;
 }) {
   const t = entry.type;
 
@@ -1134,6 +1156,7 @@ function MessageRenderer({
     return wrap(<UserMessage
       content={msg.content} time={time} showTime={showTime}
       isPinned={pinnedBlockIds?.has(blockId)}
+      isOrchestrated={isSubagentSession}
       onPin={onPinBlock ? () => onPinBlock(blockId, "user-msg", String(msg.content).slice(0, 80)) : undefined}
     />);
   }

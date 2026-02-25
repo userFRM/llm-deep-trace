@@ -3752,3 +3752,27 @@ mark.search-hl.current { background: rgba(250, 204, 21, 0.52); }
 .msg-user-md th { background: rgba(155,114,239,0.08); font-weight: 600; }
 .msg-user-md code { font-family: var(--font-mono, monospace); font-size: 11px; background: rgba(0,0,0,0.3); padding: 1px 4px; border-radius: 3px; }
 .msg-user-md strong { color: var(--text-1, #e8e8f0); }
+
+/* ── Orchestrated / injected message (subagent session user messages) ────────── */
+.msg-orchestrated {
+  background: transparent;
+  border-left: 2px solid var(--border, #2a2a35);
+  border-radius: 0;
+  padding: 8px 12px;
+  position: relative;
+}
+.msg-orchestrated.is-pinned { border-left-color: #9B72EF; }
+.msg-orchestrated-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3, #55556a);
+  margin-bottom: 6px;
+}
+.msg-orchestrated-text {
+  font-size: 13px;
+  color: var(--text-2, #9090a8);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}

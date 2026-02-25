@@ -1118,6 +1118,7 @@ export default function MainPanel() {
                     pinnedBlockIds={pinnedBlockIds}
                     onPinBlock={handlePinBlock}
                     hiddenBlockTypes={hiddenBlockTypes}
+                    isSubagentSession={sess?.isSubagent}
                   />
                 </div>
               );
