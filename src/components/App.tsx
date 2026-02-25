@@ -4,6 +4,8 @@ import { useEffect, useCallback, useRef, lazy, Suspense, useState } from "react"
 import { useStore } from "@/lib/store";
 import { useSSE } from "@/lib/useSSE";
 import { sessionLabel } from "@/lib/client-utils";
+import { normalizeEntries } from "@/lib/normalizers";
+import { NormalizedMessage } from "@/lib/types";
 import Sidebar from "./Sidebar";
 import MainPanel from "./MainPanel";
 import AnalyticsDashboard from "./AnalyticsDashboard";
@@ -32,10 +34,14 @@ export default function App() {
   const sidebarTab = useStore((s) => s.sidebarTab);
 
   const treeDragging = useRef(false);
-  const treeNavRef = useRef(false); // true when navigation came from the conversation map
   const sessionsRef = useRef(sessions); // stable ref so effects don't re-run on every SSE update
   sessionsRef.current = sessions;
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Map root: the session whose tree is displayed in the conversation map.
+  // When viewing a subagent, this stays on the parent — the map doesn't change.
+  const [mapRootId, setMapRootId] = useState<string | null>(currentSessionId);
+  const [mapRootMessages, setMapRootMessages] = useState<NormalizedMessage[]>(currentMessages);
   const [showSetup, setShowSetup] = useState<boolean | null>(null); // null = not yet checked
 
   useEffect(() => {
@@ -112,44 +118,69 @@ export default function App() {
     };
   }, [currentSessionId, activeSessions, sessions, setMessages]);
 
-  // Auto-show/hide tree panel based on subagents.
-  // Rules:
-  //   • Session has subagents → open tree (unless manually closed)
-  //   • Session IS a subagent (has parentSessionId) → leave tree as-is
-  //   • Top-level session with no subagents → close tree
-  // Uses sessionsRef (not sessions) so SSE-triggered array updates
-  // don't re-run this effect and undo the treeNavRef guard.
+  // Track map root: anchor to parent when viewing a subagent.
+  // When you navigate into a subagent, mapRootId stays on the parent —
+  // the map shows the parent's tree with the subagent node highlighted.
   useEffect(() => {
     if (!currentSessionId) return;
-    if (treeNavRef.current) {
-      treeNavRef.current = false;
-      return;
-    }
     const sess = sessionsRef.current.find((s) => s.sessionId === currentSessionId);
     if (!sess) return;
 
-    if (sess.hasSubagents) {
-      // Parent session — open the tree
-      if (!treePanelManualClose) setTreePanelOpen(true);
-    } else if (sess.parentSessionId) {
-      // Subagent session — keep tree exactly as it is, don't touch it
+    if (sess.parentSessionId) {
+      // Viewing a subagent — anchor map to its parent
+      setMapRootId(sess.parentSessionId);
     } else {
-      // Plain top-level session with no agent tree — close
+      // Top-level session — map root is itself
+      setMapRootId(currentSessionId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId]);
+
+  // Load messages for the map root when it differs from the current session.
+  // (When viewing a subagent, we need the parent's messages for the turn structure.)
+  useEffect(() => {
+    if (!mapRootId) return;
+    if (mapRootId === currentSessionId) {
+      setMapRootMessages(currentMessages);
+      return;
+    }
+    const sess = sessionsRef.current.find((s) => s.sessionId === mapRootId);
+    const source = sess?.source || "kova";
+    fetch(`/api/sessions/${mapRootId}/messages?source=${source}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setMapRootMessages(normalizeEntries(data));
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapRootId]);
+
+  // Keep mapRootMessages in sync when the root IS the current session
+  useEffect(() => {
+    if (mapRootId === currentSessionId) setMapRootMessages(currentMessages);
+  }, [currentMessages, mapRootId, currentSessionId]);
+
+  // Auto-show/hide tree based on map root's subagent status
+  useEffect(() => {
+    if (!mapRootId) return;
+    const root = sessionsRef.current.find((s) => s.sessionId === mapRootId);
+    if (!root) return;
+    if (root.hasSubagents) {
+      if (!treePanelManualClose) setTreePanelOpen(true);
+    } else {
       setTreePanelOpen(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSessionId, treePanelManualClose, setTreePanelOpen]);
+  }, [mapRootId, treePanelManualClose, setTreePanelOpen]);
 
-  // Reset manual close when switching sessions (but not from tree nav)
-  const prevSessionRef = useRef(currentSessionId);
+  // Reset manual close when switching to a new top-level session
+  const prevRootRef = useRef(mapRootId);
   useEffect(() => {
-    if (prevSessionRef.current !== currentSessionId) {
-      prevSessionRef.current = currentSessionId;
-      if (!treeNavRef.current) {
-        setTreePanelManualClose(false);
-      }
+    if (prevRootRef.current !== mapRootId) {
+      prevRootRef.current = mapRootId;
+      setTreePanelManualClose(false);
     }
-  }, [currentSessionId, setTreePanelManualClose]);
+  }, [mapRootId, setTreePanelManualClose]);
 
   const handleScrollToMessage = useCallback(
     (messageIndex: number) => {
@@ -170,10 +201,7 @@ export default function App() {
           s.key.endsWith("/" + keyOrId.slice(0, 8)) ||
           ("agent-" + keyOrId) === s.sessionId
       );
-      if (target) {
-        treeNavRef.current = true; // keep tree panel open
-        setCurrentSession(target.sessionId);
-      }
+      if (target) setCurrentSession(target.sessionId);
     },
     [sessions, setCurrentSession]
   );
@@ -227,6 +255,14 @@ export default function App() {
       ? currentSessionId.slice(0, 14) + "\u2026"
       : "Session";
 
+  // Label for the map root (may differ from current session when viewing subagents)
+  const mapRootSess = sessions.find((s) => s.sessionId === mapRootId);
+  const mapRootLabel = mapRootSess
+    ? sessionLabel(mapRootSess)
+    : mapRootId
+      ? mapRootId.slice(0, 14) + "\u2026"
+      : sessLabel;
+
   // Show setup on first run (null = still checking localStorage, avoid flash)
   if (showSetup === null) return null;
   if (showSetup) return <SetupView onDone={() => setShowSetup(false)} />;
@@ -248,14 +284,15 @@ export default function App() {
           <rect x="3.5" y="8" width="1.5" height="8" rx="0.75" fill="currentColor" />
         </svg>
       </div>
-      {treePanelOpen && currentSessionId && (
+      {treePanelOpen && mapRootId && (
         <div className="tree-panel-wrap" style={{ width: treePanelWidth }}>
           <div className="tree-resize-handle" onMouseDown={handleTreeMouseDown} />
           <Suspense fallback={<div className="tree-panel"><div className="loading-state"><div className="spinner" />Loading&hellip;</div></div>}>
             <SessionTree
-              messages={currentMessages}
-              sessionId={currentSessionId}
-              sessionLabel={sessLabel}
+              messages={mapRootMessages}
+              sessionId={mapRootId}
+              sessionLabel={mapRootLabel}
+              highlightSessionId={currentSessionId ?? undefined}
               allSessions={sessions}
               onScrollToMessage={handleScrollToMessage}
               onNavigateSession={handleNavigateSession}

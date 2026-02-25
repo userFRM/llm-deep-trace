@@ -75,6 +75,7 @@ interface SessionTreeProps {
   sessionId: string;
   sessionLabel: string;
   allSessions: import("@/lib/types").SessionInfo[];
+  highlightSessionId?: string;
   onScrollToMessage: (messageIndex: number) => void;
   onNavigateSession: (sessionKey: string) => void;
   onClose: () => void;
@@ -357,6 +358,7 @@ function InnerFlow({
   sessionId: currentSessionId,
   sessionLabel: label,
   allSessions,
+  highlightSessionId,
   onScrollToMessage,
   onNavigateSession,
   onResetView,
@@ -365,11 +367,13 @@ function InnerFlow({
   sessionId: string;
   sessionLabel: string;
   allSessions: import("@/lib/types").SessionInfo[];
+  highlightSessionId?: string;
   onScrollToMessage: (messageIndex: number) => void;
   onNavigateSession: (sessionKey: string) => void;
   onResetView?: (fn: () => void) => void;
 }) {
   const { fitView } = useReactFlow();
+  // selectedNodeId: explicit turn-node click (scroll-to-message)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   // Real child sessions from the session index (works for both Task and TaskCreate/Agent Teams)
@@ -431,16 +435,25 @@ function InnerFlow({
     return m;
   }, [allSessions]);
 
-  // Enrich nodes with selection state and agent-type colors
+  // Enrich nodes with selection/highlight state and agent-type colors.
+  // • Subagent nodes: highlighted when their agentKey matches highlightSessionId
+  //   (the session currently open in the main panel)
+  // • Turn nodes: highlighted by selectedNodeId (explicit user click)
   const nodes = useMemo(() => rawNodes.map((node) => {
     if (node.type === "subagentNode") {
       const d = node.data as SubagentNodeData;
       const sess = d.agentKey ? sessionById.get(d.agentKey) : undefined;
       const source = sess?.source || "kova";
       const accentColor = agentColors[source] || "#9B72EF";
+      // Match by exact sessionId or agentKey prefix
+      const isHighlighted =
+        !!highlightSessionId &&
+        (d.agentKey === highlightSessionId ||
+          highlightSessionId.startsWith(d.agentKey) ||
+          highlightSessionId.includes(d.agentKey));
       return {
         ...node,
-        data: { ...d, source, accentColor, isSelected: node.id === selectedNodeId },
+        data: { ...d, source, accentColor, isSelected: isHighlighted },
       };
     }
     if (node.type === "turnNode") {
@@ -450,7 +463,7 @@ function InnerFlow({
       };
     }
     return node;
-  }), [rawNodes, selectedNodeId, sessionById]);
+  }), [rawNodes, selectedNodeId, highlightSessionId, sessionById]);
 
   // Add directional arrow markers to edges
   const edges = useMemo(() => rawEdges.map((edge) => ({
@@ -488,11 +501,13 @@ function InnerFlow({
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      setSelectedNodeId((prev) => (prev === node.id ? null : node.id));
       if (node.type === "turnNode") {
+        // Toggle turn-node selection (for scroll-to-message highlight)
+        setSelectedNodeId((prev) => (prev === node.id ? null : node.id));
         const d = node.data as TurnNodeData;
         onScrollToMessage(d.messageIndex);
       } else if (node.type === "subagentNode") {
+        // Navigate to the subagent — highlight follows from highlightSessionId
         const d = node.data as SubagentNodeData;
         if (d.agentKey) onNavigateSession(d.agentKey);
       }
@@ -521,6 +536,7 @@ export default function SessionTree({
   sessionId,
   sessionLabel: label,
   allSessions,
+  highlightSessionId,
   onScrollToMessage,
   onNavigateSession,
   onClose,
@@ -571,6 +587,7 @@ export default function SessionTree({
             sessionId={sessionId}
             sessionLabel={label}
             allSessions={allSessions}
+            highlightSessionId={highlightSessionId}
             onScrollToMessage={onScrollToMessage}
             onNavigateSession={onNavigateSession}
             onResetView={handleResetView}
